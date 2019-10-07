@@ -92,7 +92,7 @@ class WCGAN():
         #label_embedding = keras.layers.Flatten()(keras.layers.Embedding(self.n_classes, self.latent_dim)(label))
         #inputs = keras.layers.multiply([noise, label_embedding])
         label = keras.Input(shape=(self.n_classes,))
-        inputs = keras.layers.concatenate([noise, label])
+        inputs = keras.layers.concatenate([noise, label], axis=1)
 
         hidden = keras.layers.Dense(256)(inputs)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
@@ -115,7 +115,7 @@ class WCGAN():
         #label_embedding = keras.layers.Flatten()(keras.layers.Embedding(self.n_classes, np.prod(self.input_shape))(label))
         #inputs = keras.layers.multiply([flatten_inputs, label_embedding])
         label = keras.Input(shape=(self.n_classes,))
-        inputs = keras.layers.concatenate([flatten_inputs, label])
+        inputs = keras.layers.concatenate([flatten_inputs, label], axis=1)
 
         hidden = keras.layers.Dense(512)(inputs)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
@@ -144,12 +144,11 @@ class WCGAN():
                 # ---------------------
                 #  Train Discriminator
                 # ---------------------
-
                 # Select a random batch of images
                 idx = np.random.randint(0, train_x.shape[0], self.batch_size)
                 imgs = train_x[idx]
                 labels = train_y[idx]
-                labels = tf.one_hot(labels, depth=10)
+                labels = np.eye(self.n_classes)[labels]
 
                 # Sample generator input
                 noise = np.random.normal(0, 1, (self.batch_size, self.latent_dim))
@@ -181,8 +180,8 @@ class WCGAN():
         for i in range(r):
             noise = np.random.normal(0, 1, (c, self.latent_dim))
             labels = np.arange(0, 10)
-            labels = tf.one_hot(labels, depth=10)
-            gen_imgs = self.generator.predict([noise, labels], steps=1)
+            labels = np.eye(self.n_classes)[labels]
+            gen_imgs = self.generator.predict([noise, labels])
             # Rescale images 0 - 1
             gen_imgs = 0.5 * gen_imgs + 0.5
 
