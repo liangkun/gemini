@@ -11,7 +11,7 @@ from functools import partial
 class RandomWeightedAverage(keras.layers.Add):
     '''Provided a random weighted average between two inputs.'''
     def _merge_function(self, inputs):
-        alpha = backend.random_uniform((128,28,28,1))
+        alpha = backend.random_uniform((32,28,28,1))
         return (alpha * inputs[0]) + ((1 - alpha) * inputs[1])
 
 class WCGAN():
@@ -67,9 +67,9 @@ class WCGAN():
         gradients_sqr = backend.square(gradients)
         gradients_sqr_sum = backend.sum(gradients_sqr, axis=np.arange(1, len(gradients_sqr.shape)))
         gradient_l2_norm = backend.sqrt(gradients_sqr_sum)
-        gradient_penalty = backend.square(1 - gradient_l2_norm)
+        # gradient_penalty = backend.square(1 - gradient_l2_norm)
         # return the mean as loss over all the batch samples
-        return backend.mean(gradient_penalty)
+        return 2 * backend.mean(gradient_l2_norm ** 6)
 
     def wasserstein_loss(self, y_true, y_pred):
         return backend.mean(y_true * y_pred)
