@@ -39,36 +39,38 @@ class WCGAN():
         self.discriminator.trainable = True
         
         real_samples = keras.Input(shape=self.input_shape)
+        #label = keras.Input(shape=(1,), dtype='int32')
+        label = keras.Input(shape=(self.n_classes,))
 
         z_dist = keras.layers.Input(shape=(self.latent_dim,))
+        fake_samples = self.generator([z_dist, label])
 
-        labels = keras.Input(shape=(1,), dtype='int32')
-        fake_samples = self.generator([z_dist, labels])
-
-        real = self.discriminator([real_samples, labels])
-        fake = self.discriminator([fake_samples, labels])
+        real = self.discriminator([real_samples, label])
+        fake = self.discriminator([fake_samples, label])
 
         interpolated_samples = RandomWeightedAverage(batch_size=self.batch_size)([real_samples, fake_samples])
-        interpolated = self.discriminator([interpolated_samples, labels])
+        interpolated = self.discriminator([interpolated_samples, label])
 
         partial_gp_loss = partial(self.gradient_penalty_loss,
             averaged_samples=interpolated_samples)
         partial_gp_loss.__name__ = 'gradient_penalty'
 
-        self.discriminator_model = keras.Model(inputs=[real_samples, labels, z_dist],
+        self.discriminator_model = keras.Model(inputs=[real_samples, z_dist, label],
             outputs=[real, fake, interpolated])
         self.discriminator_model.compile(optimizer=self.optimizer,
             loss=[self.wasserstein_loss, self.wasserstein_loss, partial_gp_loss],
-            loss_weights=[1, 1, 10])
+            loss_weights=[1, 1, 5])
 
         # construct computational graph for generator
         self.discriminator.trainable = False
         self.generator.trainable = True
         z_dist = keras.Input(shape=(self.latent_dim,))
-        labels = keras.Input(shape=(1,), dtype='int32')
-        fake_samples = self.generator([z_dist, labels])
-        fake = self.discriminator([fake_samples, labels])
-        self.generator_model = keras.Model(inputs=[z_dist, labels], outputs=fake)
+        # label = keras.Input(shape=(1,), dtype='int32')
+        label = keras.Input(shape=(self.n_classes,))
+
+        fake_samples = self.generator([z_dist, label])
+        fake = self.discriminator([fake_samples, label])
+        self.generator_model = keras.Model(inputs=[z_dist, label], outputs=fake)
         self.generator_model.compile(loss=self.wasserstein_loss, optimizer=self.optimizer)
 
     def gradient_penalty_loss(self, y_true, y_pred, averaged_samples):
@@ -86,9 +88,11 @@ class WCGAN():
 
     def build_generator(self):
         noise = keras.Input(shape=(self.latent_dim,))
-        label = keras.Input(shape=(1,), dtype='int32')
-        label_embedding = keras.layers.Flatten()(keras.layers.Embedding(self.n_classes, self.latent_dim)(label))
-        inputs = keras.layers.multiply([noise, label_embedding])
+        #label = keras.Input(shape=(1,), dtype='int32')
+        #label_embedding = keras.layers.Flatten()(keras.layers.Embedding(self.n_classes, self.latent_dim)(label))
+        #inputs = keras.layers.multiply([noise, label_embedding])
+        label = keras.Input(shape=(self.n_classes,))
+        inputs = keras.layers.concatenate([noise, label])
 
         hidden = keras.layers.Dense(256)(inputs)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
@@ -107,9 +111,11 @@ class WCGAN():
     def build_discriminator(self):
         raw_inputs = keras.Input(shape=self.input_shape)
         flatten_inputs = keras.layers.Flatten()(raw_inputs)
-        label = keras.Input(shape=(1,), dtype='int32')
-        label_embedding = keras.layers.Flatten()(keras.layers.Embedding(self.n_classes, np.prod(self.input_shape))(label))
-        inputs = keras.layers.multiply([flatten_inputs, label_embedding])
+        #label = keras.Input(shape=(1,), dtype='int32')
+        #label_embedding = keras.layers.Flatten()(keras.layers.Embedding(self.n_classes, np.prod(self.input_shape))(label))
+        #inputs = keras.layers.multiply([flatten_inputs, label_embedding])
+        label = keras.Input(shape=(self.n_classes,))
+        inputs = keras.layers.concatenate([flatten_inputs, label])
 
         hidden = keras.layers.Dense(512)(inputs)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
@@ -143,19 +149,22 @@ class WCGAN():
                 idx = np.random.randint(0, train_x.shape[0], self.batch_size)
                 imgs = train_x[idx]
                 labels = train_y[idx]
+                labels = tf.one_hot(labels, depth=10)
 
                 # Sample generator input
                 noise = np.random.normal(0, 1, (self.batch_size, self.latent_dim))
 
                 # Train the discriminator
-                d_loss = self.discriminator_model.train_on_batch([imgs, labels, noise],
+                d_loss = self.discriminator_model.train_on_batch([imgs, noise, labels],
                                                                 [real, fake, dummy])
 
             # ---------------------
             #  Train Generator
             # ---------------------
             noise = np.random.normal(0, 1, (self.batch_size, self.latent_dim))
-            labels = np.random.randint(0, self.n_classes, self.batch_size).reshape(-1, 1)
+            #labels = np.random.randint(0, self.n_classes, self.batch_size).reshape(-1, 1)
+            labels = np.random.randint(0, self.n_classes, self.batch_size)
+            labels = tf.one_hot(labels, depth=10)
             g_loss = self.generator_model.train_on_batch([noise, labels], real)
 
             # Plot the progress
@@ -172,7 +181,8 @@ class WCGAN():
         for i in range(r):
             noise = np.random.normal(0, 1, (c, self.latent_dim))
             labels = np.arange(0, 10)
-            gen_imgs = self.generator.predict([noise, labels])
+            labels = tf.one_hot(labels, depth=10)
+            gen_imgs = self.generator.predict([noise, labels], steps=1)
             # Rescale images 0 - 1
             gen_imgs = 0.5 * gen_imgs + 0.5
 
