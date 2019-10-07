@@ -89,6 +89,8 @@ class WCGAN():
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         hidden = keras.layers.Dense(512)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
+        hidden = keras.layers.Dense(512)(hidden)
+        hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         hidden = keras.layers.Dense(np.prod(self.input_shape), activation='tanh')(hidden)
         fake_sample = keras.layers.Reshape(self.input_shape)(hidden)
 
@@ -104,11 +106,15 @@ class WCGAN():
         label_embedding = keras.layers.Flatten()(keras.layers.Embedding(self.n_classes, np.prod(self.input_shape))(label))
         inputs = keras.layers.multiply([flatten_inputs, label_embedding])
 
+        hidden = keras.layers.Dense(512)(inputs)
+        hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         hidden = keras.layers.Dense(256)(inputs)
-        hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)    
+        hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)  
         hidden = keras.layers.Dense(self.latent_dim)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)    
         hidden = keras.layers.Dense(256)(hidden)
+        hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
+        hidden = keras.layers.Dense(512)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         validity = keras.layers.Dense(1)(hidden)
 
