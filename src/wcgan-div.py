@@ -189,6 +189,17 @@ class WCGAN():
                 axs[i,j].axis('off')
         fig.savefig("images/mnist_%d.png" % epoch)
         plt.close()
+    
+    def save(self, path):
+        self.generator.save(path + '/generator.h5')
+        self.discriminator.save(path + '/discriminator.h5')
+    
+    def load(self, path):
+        self.generator = keras.models.load_model(path + '/generator.h5')
+        self.discriminator = keras.models.load_model(path + '/discriminator.h5')
+
+    def generate(self, labels, n_samples=1):
+        pass
 
 
 if __name__ == '__main__':
