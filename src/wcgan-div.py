@@ -22,43 +22,43 @@ class WCGAN():
         self.latent_dim = 100
         self.class_num = 10
 
-        self.n_critic = 5
+        self.n_discriminators = 5
         self.optimizer = keras.optimizers.RMSprop(lr=0.00005)
 
         self.generator = self.build_generator()
-        self.critic = self.build_critic()
+        self.discriminator = self.build_discriminator()
 
-        # constuct computational graph for critic
+        # constuct computational graph for discriminator
         self.generator.trainable = False
-        self.critic.trainable = True
+        self.discriminator.trainable = True
         
         real_samples = keras.layers.Input(shape=self.input_shape)
 
         z_dist = keras.layers.Input(shape=(self.latent_dim,))
         fake_samples = self.generator(z_dist)
 
-        real = self.critic(real_samples)
-        fake = self.critic(fake_samples)
+        real = self.discriminator(real_samples)
+        fake = self.discriminator(fake_samples)
 
         interpolated_samples = RandomWeightedAverage()([real_samples, fake_samples])
-        interpolated = self.critic(interpolated_samples)
+        interpolated = self.discriminator(interpolated_samples)
 
         partial_gp_loss = partial(self.gradient_penalty_loss,
             averaged_samples=interpolated_samples)
         partial_gp_loss.__name__ = 'gradient_penalty'
 
-        self.critic_model = keras.Model(inputs=[real_samples, z_dist],
+        self.discriminator_model = keras.Model(inputs=[real_samples, z_dist],
             outputs=[real, fake, interpolated])
-        self.critic_model.compile(optimizer=self.optimizer,
+        self.discriminator_model.compile(optimizer=self.optimizer,
             loss=[self.wasserstein_loss, self.wasserstein_loss, partial_gp_loss],
             loss_weights=[1, 1, 10])
 
         # construct computational graph for generator
-        self.critic.trainable = False
+        self.discriminator.trainable = False
         self.generator.trainable = True
         z_dist = keras.layers.Input(shape=(self.latent_dim,))
         fake_samples = self.generator(z_dist)
-        fake = self.critic(fake_samples)
+        fake = self.discriminator(fake_samples)
         self.generator_model = keras.Model(inputs=z_dist, outputs=fake)
         self.generator_model.compile(loss=self.wasserstein_loss, optimizer=self.optimizer)
 
@@ -67,9 +67,10 @@ class WCGAN():
         gradients_sqr = backend.square(gradients)
         gradients_sqr_sum = backend.sum(gradients_sqr, axis=np.arange(1, len(gradients_sqr.shape)))
         gradient_l2_norm = backend.sqrt(gradients_sqr_sum)
+        gradient_penalty = gradient_l2_norm ** 6
         # gradient_penalty = backend.square(1 - gradient_l2_norm)
         # return the mean as loss over all the batch samples
-        return 2 * backend.mean(gradient_l2_norm ** 6)
+        return 2 * backend.mean(gradient_penalty)
 
     def wasserstein_loss(self, y_true, y_pred):
         return backend.mean(y_true * y_pred)
@@ -94,7 +95,7 @@ class WCGAN():
         fake_samples = model(z_dist)
         return keras.Model(z_dist, fake_samples)
 
-    def build_critic(self):
+    def build_discriminator(self):
         model = keras.Sequential(name='Discriminator')
         model.add(keras.layers.Conv2D(16, kernel_size=3, strides=2, input_shape=self.input_shape, padding="same"))
         model.add(keras.layers.LeakyReLU(alpha=0.2))
@@ -121,39 +122,30 @@ class WCGAN():
         return keras.Model(real_samples, real)
 
     def train(self, train_x, train_y, epochs, batch_size, sample_interval=50):
-        # Load the dataset
-        (X_train, _), (_, _) = keras.datasets.mnist.load_data()
-
-        # Rescale -1 to 1
-        X_train = (X_train.astype(np.float32) - 127.5) / 127.5
-        X_train = np.expand_dims(X_train, axis=3)
-
         # Adversarial ground truths
-        valid = -np.ones((batch_size, 1))
+        real = -np.ones((batch_size, 1))
         fake =  np.ones((batch_size, 1))
-        dummy = np.zeros((batch_size, 1)) # Dummy gt for gradient penalty
+        dummy = np.zeros((batch_size, 1))  # Dummy gt for gradient penalty
         for epoch in range(epochs):
-
-            for _ in range(self.n_critic):
-
+            for _ in range(self.n_discriminator):
                 # ---------------------
                 #  Train Discriminator
                 # ---------------------
 
                 # Select a random batch of images
-                idx = np.random.randint(0, X_train.shape[0], batch_size)
-                imgs = X_train[idx]
+                idx = np.random.randint(0, train_x.shape[0], batch_size)
+                imgs = train_x[idx]
                 # Sample generator input
                 noise = np.random.normal(0, 1, (batch_size, self.latent_dim))
-                # Train the critic
-                d_loss = self.critic_model.train_on_batch([imgs, noise],
-                                                                [valid, fake, dummy])
+                # Train the discriminator
+                d_loss = self.discriminator_model.train_on_batch([imgs, noise],
+                                                                [real, fake, dummy])
 
             # ---------------------
             #  Train Generator
             # ---------------------
-
-            g_loss = self.generator_model.train_on_batch(noise, valid)
+            noise = np.random.normal(0, 1, (batch_size, self.latent_dim))
+            g_loss = self.generator_model.train_on_batch(noise, real)
 
             # Plot the progress
             print ("%d [D loss: %f] [G loss: %f]" % (epoch, d_loss[0], g_loss))
@@ -186,10 +178,10 @@ if __name__ == '__main__':
 
     (train_x, train_y), (test_x, test_y) = keras.datasets.mnist.load_data()
     train_x = (train_x.astype(np.float32) - 127.5) / 127.5
-    #train_x = np.expand_dims(train_x, axis=3)
+    train_x = np.expand_dims(train_x, axis=3)
     #train_y = train_y == 0
     test_x = (test_x.astype(np.float32) - 127.5) / 127.5
-    #test_x = np.expand_dims(test_x, axis=3)
+    test_x = np.expand_dims(test_x, axis=3)
     #test_y = test_y == 0
 
     wcgan.train(train_x, train_y, epochs=10000, batch_size=32, sample_interval=100)
