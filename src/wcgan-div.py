@@ -23,8 +23,8 @@ class WCGAN():
         self.n_classes = 10
 
         self.n_discriminators = 5
-        #self.optimizer = keras.optimizers.Adam(0.0001, beta_1=0.5, beta_2=0.9)
-        self.optimizer = keras.optimizers.RMSprop(lr=0.00005)
+        self.optimizer = keras.optimizers.Adam(0.0001, beta_1=0.5, beta_2=0.9)
+        #self.optimizer = keras.optimizers.RMSprop(lr=0.00005)
 
         self.generator = self.build_generator()
         self.discriminator = self.build_discriminator()
@@ -71,8 +71,8 @@ class WCGAN():
         gradients_sqr = K.square(gradients)
         gradients_sqr_sum = K.sum(gradients_sqr, axis=np.arange(1, len(gradients_sqr.shape)))
         gradient_l2_norm = K.sqrt(gradients_sqr_sum)
-        # gradient_penalty = gradient_l2_norm ** 6
-        gradient_penalty = K.square(1 - gradient_l2_norm)
+        gradient_penalty = 2 * (gradient_l2_norm ** 6)
+        # gradient_penalty = K.square(1 - gradient_l2_norm)
         # return the mean as loss over all the batch samples
         return K.mean(gradient_penalty)
 
@@ -183,5 +183,5 @@ if __name__ == '__main__':
     test_x = np.expand_dims(test_x, axis=3)
     #test_y = test_y == 0
 
-    wcgan.train(train_x, train_y, epochs=10000, batch_size=32, sample_interval=100)
+    wcgan.train(train_x, train_y, epochs=30000, batch_size=32, sample_interval=100)
 
