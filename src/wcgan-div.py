@@ -192,6 +192,6 @@ if __name__ == '__main__':
     #test_x = np.expand_dims(test_x, axis=3)
     #test_y = test_y == 0
 
-    wcgan.train(train_x, train_y, epochs=2001, batch_size=128, sample_interval=50)
+    wcgan.train(train_x, train_y, epochs=10000, batch_size=32, sample_interval=100)
     #gemini.train_classifier(train_x, train_y, epochs=200, batch_size=32)
     #gemini.classifier.evaluate(test_x, test_y)
