@@ -20,7 +20,7 @@ class WCGAN():
         self.channels = 1
         self.input_shape = (28, 28, 1)
         self.latent_dim = 100
-        self.class_num = 10
+        self.n_class = 10
 
         self.n_discriminators = 5
         self.optimizer = keras.optimizers.Adam(0.0001, beta_1=0.5, beta_2=0.9)
@@ -32,22 +32,23 @@ class WCGAN():
         self.generator.trainable = False
         self.discriminator.trainable = True
         
-        real_samples = keras.layers.Input(shape=self.input_shape)
+        real_samples = keras.Input(shape=self.input_shape)
+        labels = keras.Input(shape=(self.n_class,))
 
         z_dist = keras.layers.Input(shape=(self.latent_dim,))
-        fake_samples = self.generator(z_dist)
+        fake_samples = self.generator([z_dist, labels])
 
-        real = self.discriminator(real_samples)
-        fake = self.discriminator(fake_samples)
+        real = self.discriminator([real_samples, labels])
+        fake = self.discriminator([fake_samples, labels])
 
         interpolated_samples = RandomWeightedAverage()([real_samples, fake_samples])
-        interpolated = self.discriminator(interpolated_samples)
+        interpolated = self.discriminator([interpolated_samples, labels])
 
         partial_gp_loss = partial(self.gradient_penalty_loss,
             averaged_samples=interpolated_samples)
         partial_gp_loss.__name__ = 'gradient_penalty'
 
-        self.discriminator_model = keras.Model(inputs=[real_samples, z_dist],
+        self.discriminator_model = keras.Model(inputs=[real_samples, z_dist, labels],
             outputs=[real, fake, interpolated])
         self.discriminator_model.compile(optimizer=self.optimizer,
             loss=[self.wasserstein_loss, self.wasserstein_loss, partial_gp_loss],
@@ -56,10 +57,11 @@ class WCGAN():
         # construct computational graph for generator
         self.discriminator.trainable = False
         self.generator.trainable = True
-        z_dist = keras.layers.Input(shape=(self.latent_dim,))
-        fake_samples = self.generator(z_dist)
-        fake = self.discriminator(fake_samples)
-        self.generator_model = keras.Model(inputs=z_dist, outputs=fake)
+        z_dist = keras.Input(shape=(self.latent_dim,))
+        labels = keras.Input(shape=(self.n_class,))
+        fake_samples = self.generator([z_dist, labels])
+        fake = self.discriminator([fake_samples, labels])
+        self.generator_model = keras.Model(inputs=[z_dist, labels], outputs=fake)
         self.generator_model.compile(loss=self.wasserstein_loss, optimizer=self.optimizer)
 
     def gradient_penalty_loss(self, y_true, y_pred, averaged_samples):
@@ -76,7 +78,9 @@ class WCGAN():
         return backend.mean(y_true * y_pred)
 
     def build_generator(self):
-        inputs = keras.Input(shape=(self.latent_dim,))
+        noise = keras.Input(shape=(self.latent_dim,))
+        label = keras.Input(shape=(self.n_class,))
+        inputs = keras.layers.Concatenate()([noise, label])
 
         hidden = keras.layers.Dense(256)(inputs)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
@@ -87,16 +91,18 @@ class WCGAN():
         hidden = keras.layers.Dense(np.prod(self.input_shape), activation='tanh')(hidden)
         hidden = keras.layers.Reshape(self.input_shape)(hidden)
 
-        model = keras.Model(inputs=[inputs], outputs=hidden, name='Generator')
+        model = keras.Model(inputs=[noise, label], outputs=hidden, name='Generator')
         model.summary()
 
         return model
 
     def build_discriminator(self):
-        inputs = keras.Input(shape=self.input_shape)
-        hidden = keras.layers.Flatten()(inputs)
+        raw_inputs = keras.Input(shape=self.input_shape)
+        flatten_inputs = keras.layers.Flatten()(raw_inputs)
+        label = keras.Input(shape=(self.n_class,))
+        inputs = keras.layers.Concatenate()([flatten_inputs, label])
 
-        hidden = keras.layers.Dense(512)(hidden)
+        hidden = keras.layers.Dense(512)(inputs)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         hidden = keras.layers.Dense(256)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)    
@@ -108,7 +114,7 @@ class WCGAN():
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         validity = keras.layers.Dense(1)(hidden)
 
-        model = keras.Model(inputs=[inputs], outputs=[validity], name ='Discriminator')
+        model = keras.Model(inputs=[raw_inputs, label], outputs=validity, name ='Discriminator')
         model.summary()
 
         return model
@@ -127,17 +133,21 @@ class WCGAN():
                 # Select a random batch of images
                 idx = np.random.randint(0, train_x.shape[0], batch_size)
                 imgs = train_x[idx]
+                labels = tf.one_hot(train_y[idx], depth=10)
+
                 # Sample generator input
                 noise = np.random.normal(0, 1, (batch_size, self.latent_dim))
+
                 # Train the discriminator
-                d_loss = self.discriminator_model.train_on_batch([imgs, noise],
+                d_loss = self.discriminator_model.train_on_batch([imgs, noise, labels],
                                                                 [real, fake, dummy])
 
             # ---------------------
             #  Train Generator
             # ---------------------
             noise = np.random.normal(0, 1, (batch_size, self.latent_dim))
-            g_loss = self.generator_model.train_on_batch(noise, real)
+            labels = tf.one_hot(np.random.randint(0, 10, batch_size), depth=10)
+            g_loss = self.generator_model.train_on_batch([noise, labels], real)
 
             # Plot the progress
             print ("%d [D loss: %f] [G loss: %f]" % (epoch, d_loss[0], g_loss))
@@ -147,20 +157,19 @@ class WCGAN():
                 self.sample(epoch)
 
     def sample(self, epoch):
-        r, c = 5, 5
-        noise = np.random.normal(0, 1, (r * c, self.latent_dim))
-        gen_imgs = self.generator.predict(noise)
-
-        # Rescale images 0 - 1
-        gen_imgs = 0.5 * gen_imgs + 0.5
-
+        r, c = 5, 10
         fig, axs = plt.subplots(r, c)
-        cnt = 0
+
         for i in range(r):
+            noise = np.random.normal(0, 1, (c, self.latent_dim))
+            labels = tf.one_hot(np.arange(0, 10), depth=10)
+            gen_imgs = self.generator.predict([noise, labels], steps=1)
+            # Rescale images 0 - 1
+            gen_imgs = 0.5 * gen_imgs + 0.5
+
             for j in range(c):
-                axs[i,j].imshow(gen_imgs[cnt, :,:,0], cmap='gray')
+                axs[i,j].imshow(gen_imgs[j, :, :, 0], cmap='gray')
                 axs[i,j].axis('off')
-                cnt += 1
         fig.savefig("images/mnist_%d.png" % epoch)
         plt.close()
 
