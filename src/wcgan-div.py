@@ -15,14 +15,13 @@ class RandomWeightedAverage(keras.layers.Add):
         self.batch_size = batch_size
     
     def _merge_function(self, inputs):
-        alpha = K.random_uniform((self.batch_size, 1, 1, 1))
+        alpha = K.random_uniform((self.batch_size, 1))
         return (alpha * inputs[0]) + ((1 - alpha) * inputs[1])
 
 class WCGAN():
     '''WCGAN using wasserstein divergancy'''
-    def __init__(self, batch_size=64):
-        self.channels = 1
-        self.input_shape = (28, 28, 1)
+    def __init__(self, input_dim, batch_size=64):
+        self.input_dim = input_dim
         self.latent_dim = 32
         self.n_classes = 10
         self.batch_size = batch_size
@@ -39,7 +38,7 @@ class WCGAN():
         self.generator.trainable = False
         self.discriminator.trainable = True
         
-        real_samples = keras.Input(shape=self.input_shape)
+        real_samples = keras.Input(shape=(self.input_dim,))
         #label = keras.Input(shape=(1,), dtype='int32')
         label = keras.Input(shape=(self.n_classes,))
 
@@ -101,8 +100,7 @@ class WCGAN():
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         hidden = keras.layers.Dense(512)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
-        hidden = keras.layers.Dense(np.prod(self.input_shape), activation='tanh')(hidden)
-        fake_sample = keras.layers.Reshape(self.input_shape)(hidden)
+        fake_sample = keras.layers.Dense(self.input_dim, activation='tanh')(hidden)
 
         model = keras.Model(inputs=[noise, label], outputs=fake_sample, name='Generator')
         model.summary()
@@ -110,17 +108,16 @@ class WCGAN():
         return model
 
     def build_discriminator(self):
-        raw_inputs = keras.Input(shape=self.input_shape)
-        flatten_inputs = keras.layers.Flatten()(raw_inputs)
+        raw_inputs = keras.Input(shape=(self.input_dim,))
         #label = keras.Input(shape=(1,), dtype='int32')
         #label_embedding = keras.layers.Flatten()(keras.layers.Embedding(self.n_classes, np.prod(self.input_shape))(label))
         #inputs = keras.layers.multiply([flatten_inputs, label_embedding])
         label = keras.Input(shape=(self.n_classes,))
-        inputs = keras.layers.concatenate([flatten_inputs, label], axis=1)
+        inputs = keras.layers.concatenate([raw_inputs, label], axis=1)
 
         hidden = keras.layers.Dense(512)(inputs)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
-        hidden = keras.layers.Dense(256)(inputs)
+        hidden = keras.layers.Dense(256)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)  
         hidden = keras.layers.Dense(self.latent_dim)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)    
@@ -185,24 +182,25 @@ class WCGAN():
             gen_imgs = self.generator.predict([noise, labels])
             # Rescale images 0 - 1
             gen_imgs = 0.5 * gen_imgs + 0.5
+            gen_imgs = np.reshape(gen_imgs, (-1, 28, 28))
 
             for j in range(c):
-                axs[i,j].imshow(gen_imgs[j, :, :, 0], cmap='gray')
+                axs[i,j].imshow(gen_imgs[j, :, :], cmap='gray')
                 axs[i,j].axis('off')
         fig.savefig("images/mnist_%d.png" % epoch)
         plt.close()
 
 
 if __name__ == '__main__':
-    wcgan = WCGAN()
-
     (train_x, train_y), (test_x, test_y) = keras.datasets.mnist.load_data()
     train_x = (train_x.astype(np.float32) - 127.5) / 127.5
-    train_x = np.expand_dims(train_x, axis=3)
+    input_dim = np.prod(train_x.shape[1:])
+    train_x = np.reshape(train_x, (-1, input_dim))
     #train_y = train_y == 0
     test_x = (test_x.astype(np.float32) - 127.5) / 127.5
     test_x = np.expand_dims(test_x, axis=3)
     #test_y = test_y == 0
 
+    wcgan = WCGAN(input_dim=input_dim)
     wcgan.train(train_x, train_y, epochs=30001, sample_interval=200)
 
