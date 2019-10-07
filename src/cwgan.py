@@ -18,8 +18,8 @@ class RandomWeightedAverage(keras.layers.Add):
         alpha = K.random_uniform((self.batch_size, 1))
         return (alpha * inputs[0]) + ((1 - alpha) * inputs[1])
 
-class WCGAN():
-    '''WCGAN using wasserstein divergancy'''
+class CWGAN():
+    '''Conditional WGAN using wasserstein divergency'''
     def __init__(self, input_dim, batch_size=64):
         self.input_dim = input_dim
         self.latent_dim = 32
@@ -29,7 +29,6 @@ class WCGAN():
 
         self.n_discriminators = 5
         self.optimizer = keras.optimizers.Adam(0.0001, beta_1=0.5, beta_2=0.9)
-        #self.optimizer = keras.optimizers.RMSprop(lr=0.00005)
 
         self.generator = self.build_generator()
         self.discriminator = self.build_discriminator()
@@ -39,7 +38,6 @@ class WCGAN():
         self.discriminator.trainable = True
         
         real_samples = keras.Input(shape=(self.input_dim,))
-        #label = keras.Input(shape=(1,), dtype='int32')
         label = keras.Input(shape=(self.n_classes,))
 
         z_dist = keras.layers.Input(shape=(self.latent_dim,))
@@ -65,7 +63,6 @@ class WCGAN():
         self.discriminator.trainable = False
         self.generator.trainable = True
         z_dist = keras.Input(shape=(self.latent_dim,))
-        # label = keras.Input(shape=(1,), dtype='int32')
         label = keras.Input(shape=(self.n_classes,))
 
         fake_samples = self.generator([z_dist, label])
@@ -79,7 +76,6 @@ class WCGAN():
         gradients_sqr_sum = K.sum(gradients_sqr, axis=np.arange(1, len(gradients_sqr.shape)))
         gradient_l2_norm = K.sqrt(gradients_sqr_sum)
         gradient_penalty = 2 * (gradient_l2_norm ** 6)
-        # gradient_penalty = K.square(1 - gradient_l2_norm)
         # return the mean as loss over all the batch samples
         return K.mean(gradient_penalty)
 
@@ -88,9 +84,6 @@ class WCGAN():
 
     def build_generator(self):
         noise = keras.Input(shape=(self.latent_dim,))
-        #label = keras.Input(shape=(1,), dtype='int32')
-        #label_embedding = keras.layers.Flatten()(keras.layers.Embedding(self.n_classes, self.latent_dim)(label))
-        #inputs = keras.layers.multiply([noise, label_embedding])
         label = keras.Input(shape=(self.n_classes,))
         inputs = keras.layers.concatenate([noise, label], axis=1)
 
@@ -109,9 +102,6 @@ class WCGAN():
 
     def build_discriminator(self):
         raw_inputs = keras.Input(shape=(self.input_dim,))
-        #label = keras.Input(shape=(1,), dtype='int32')
-        #label_embedding = keras.layers.Flatten()(keras.layers.Embedding(self.n_classes, np.prod(self.input_shape))(label))
-        #inputs = keras.layers.multiply([flatten_inputs, label_embedding])
         label = keras.Input(shape=(self.n_classes,))
         inputs = keras.layers.concatenate([raw_inputs, label], axis=1)
 
@@ -159,7 +149,6 @@ class WCGAN():
             #  Train Generator
             # ---------------------
             noise = np.random.normal(0, 1, (self.batch_size, self.latent_dim))
-            #labels = np.random.randint(0, self.n_classes, self.batch_size).reshape(-1, 1)
             labels = np.random.randint(0, self.n_classes, self.batch_size)
             labels = self.label_table[labels]
             g_loss = self.generator_model.train_on_batch([noise, labels], real)
@@ -207,11 +196,12 @@ if __name__ == '__main__':
     train_x = (train_x.astype(np.float32) - 127.5) / 127.5
     input_dim = np.prod(train_x.shape[1:])
     train_x = np.reshape(train_x, (-1, input_dim))
-    #train_y = train_y == 0
-    test_x = (test_x.astype(np.float32) - 127.5) / 127.5
-    test_x = np.expand_dims(test_x, axis=3)
-    #test_y = test_y == 0
 
-    wcgan = WCGAN(input_dim=input_dim)
-    wcgan.train(train_x, train_y, epochs=30001, sample_interval=200)
+    cwgan = CWGAN(input_dim=input_dim)
+    cwgan.train(train_x, train_y, epochs=20001, sample_interval=200)
+    cwgan.save('model')
+
+    cwgan2 = CWGAN(input_dim=input_dim)
+    cwgan2.load('model')
+    cwgan2.sample(epoch=1)
 
