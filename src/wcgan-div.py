@@ -23,7 +23,7 @@ class WCGAN():
         self.class_num = 10
 
         self.n_discriminators = 5
-        self.optimizer = keras.optimizers.RMSprop(lr=0.00005)
+        self.optimizer = keras.optimizers.Adam(0.0001, beta_1=0.5, beta_2=0.9)
 
         self.generator = self.build_generator()
         self.discriminator = self.build_discriminator()
@@ -127,7 +127,7 @@ class WCGAN():
         fake =  np.ones((batch_size, 1))
         dummy = np.zeros((batch_size, 1))  # Dummy gt for gradient penalty
         for epoch in range(epochs):
-            for _ in range(self.n_discriminator):
+            for _ in range(self.n_discriminators):
                 # ---------------------
                 #  Train Discriminator
                 # ---------------------
