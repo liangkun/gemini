@@ -163,7 +163,7 @@ class WCGAN():
             noise = np.random.normal(0, 1, (self.batch_size, self.latent_dim))
             #labels = np.random.randint(0, self.n_classes, self.batch_size).reshape(-1, 1)
             labels = np.random.randint(0, self.n_classes, self.batch_size)
-            labels = tf.one_hot(labels, depth=10)
+            labels = np.eye(self.n_classes)[labels]
             g_loss = self.generator_model.train_on_batch([noise, labels], real)
 
             # Plot the progress
