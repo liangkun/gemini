@@ -19,7 +19,7 @@ class WCGAN():
     def __init__(self):
         self.channels = 1
         self.input_shape = (28, 28, 1)
-        self.latent_dim = 100
+        self.latent_dim = 5
         self.n_class = 10
 
         self.n_discriminators = 5
@@ -85,8 +85,6 @@ class WCGAN():
         hidden = keras.layers.Dense(256)(inputs)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         hidden = keras.layers.Dense(512)(hidden)
-        hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)    
-        hidden = keras.layers.Dense(512)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         hidden = keras.layers.Dense(np.prod(self.input_shape), activation='tanh')(hidden)
         hidden = keras.layers.Reshape(self.input_shape)(hidden)
@@ -102,15 +100,11 @@ class WCGAN():
         label = keras.Input(shape=(self.n_class,))
         inputs = keras.layers.Concatenate()([flatten_inputs, label])
 
-        hidden = keras.layers.Dense(512)(inputs)
-        hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
-        hidden = keras.layers.Dense(256)(hidden)
+        hidden = keras.layers.Dense(256)(inputs)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)    
         hidden = keras.layers.Dense(self.latent_dim)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)    
         hidden = keras.layers.Dense(256)(hidden)
-        hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
-        hidden = keras.layers.Dense(512)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         validity = keras.layers.Dense(1)(hidden)
 
