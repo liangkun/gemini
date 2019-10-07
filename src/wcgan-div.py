@@ -11,7 +11,7 @@ from functools import partial
 class RandomWeightedAverage(keras.layers.Add):
     '''Provided a random weighted average between two inputs.'''
     def _merge_function(self, inputs):
-        alpha = K.random_uniform((32, 1, 1, 1))
+        alpha = K.random_uniform((128, 1, 1, 1))
         return (alpha * inputs[0]) + ((1 - alpha) * inputs[1])
 
 class WCGAN():
@@ -189,5 +189,5 @@ if __name__ == '__main__':
     test_x = np.expand_dims(test_x, axis=3)
     #test_y = test_y == 0
 
-    wcgan.train(train_x, train_y, epochs=30000, batch_size=32, sample_interval=100)
+    wcgan.train(train_x, train_y, epochs=30001, batch_size=128, sample_interval=200)
 
