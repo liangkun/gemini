@@ -26,6 +26,7 @@ class WCGAN():
         self.latent_dim = 100
         self.n_classes = 10
         self.batch_size = batch_size
+        self.label_table = np.eye(self.n_classes)
 
         self.n_discriminators = 5
         self.optimizer = keras.optimizers.Adam(0.0001, beta_1=0.5, beta_2=0.9)
@@ -148,7 +149,7 @@ class WCGAN():
                 idx = np.random.randint(0, train_x.shape[0], self.batch_size)
                 imgs = train_x[idx]
                 labels = train_y[idx]
-                labels = np.eye(self.n_classes)[labels]
+                labels = self.label_table[labels]
 
                 # Sample generator input
                 noise = np.random.normal(0, 1, (self.batch_size, self.latent_dim))
@@ -163,7 +164,7 @@ class WCGAN():
             noise = np.random.normal(0, 1, (self.batch_size, self.latent_dim))
             #labels = np.random.randint(0, self.n_classes, self.batch_size).reshape(-1, 1)
             labels = np.random.randint(0, self.n_classes, self.batch_size)
-            labels = np.eye(self.n_classes)[labels]
+            labels = self.label_table[labels]
             g_loss = self.generator_model.train_on_batch([noise, labels], real)
 
             # Plot the progress
@@ -180,7 +181,7 @@ class WCGAN():
         for i in range(r):
             noise = np.random.normal(0, 1, (c, self.latent_dim))
             labels = np.arange(0, 10)
-            labels = np.eye(self.n_classes)[labels]
+            labels = self.label_table[labels]
             gen_imgs = self.generator.predict([noise, labels])
             # Rescale images 0 - 1
             gen_imgs = 0.5 * gen_imgs + 0.5
