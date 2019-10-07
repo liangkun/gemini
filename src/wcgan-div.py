@@ -23,7 +23,7 @@ class WCGAN():
     def __init__(self, batch_size=64):
         self.channels = 1
         self.input_shape = (28, 28, 1)
-        self.latent_dim = 100
+        self.latent_dim = 32
         self.n_classes = 10
         self.batch_size = batch_size
         self.label_table = np.eye(self.n_classes)
