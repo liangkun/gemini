@@ -76,50 +76,42 @@ class WCGAN():
         return backend.mean(y_true * y_pred)
 
     def build_generator(self):
-        model = keras.Sequential(name='Generator')
-        model.add(keras.layers.Dense(128 * 7 * 7, activation="relu", input_dim=self.latent_dim))
-        model.add(keras.layers.Reshape((7, 7, 128)))
-        model.add(keras.layers.UpSampling2D())
-        model.add(keras.layers.Conv2D(128, kernel_size=4, padding="same"))
-        model.add(keras.layers.BatchNormalization(momentum=0.8))
-        model.add(keras.layers.Activation("relu"))
-        model.add(keras.layers.UpSampling2D())
-        model.add(keras.layers.Conv2D(64, kernel_size=4, padding="same"))
-        model.add(keras.layers.BatchNormalization(momentum=0.8))
-        model.add(keras.layers.Activation("relu"))
-        model.add(keras.layers.Conv2D(self.channels, kernel_size=4, padding="same"))
-        model.add(keras.layers.Activation("tanh"))
+        inputs = keras.Input(shape=(self.latent_dim,))
+
+        hidden = keras.layers.Dense(256)(inputs)
+        hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
+        hidden = keras.layers.Dense(512)(hidden)
+        hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)    
+        hidden = keras.layers.Dense(512)(hidden)
+        hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
+        hidden = keras.layers.Dense(np.prod(self.input_shape), activation='tanh')(hidden)
+        hidden = keras.layers.Reshape(self.input_shape)(hidden)
+
+        model = keras.Model(inputs=[inputs], outputs=hidden, name='Generator')
         model.summary()
 
-        z_dist = keras.layers.Input(shape=(self.latent_dim,))
-        fake_samples = model(z_dist)
-        return keras.Model(z_dist, fake_samples)
+        return model
 
     def build_discriminator(self):
-        model = keras.Sequential(name='Discriminator')
-        model.add(keras.layers.Conv2D(16, kernel_size=3, strides=2, input_shape=self.input_shape, padding="same"))
-        model.add(keras.layers.LeakyReLU(alpha=0.2))
-        model.add(keras.layers.Dropout(0.25))
-        model.add(keras.layers.Conv2D(32, kernel_size=3, strides=2, padding="same"))
-        model.add(keras.layers.ZeroPadding2D(padding=((0,1),(0,1))))
-        model.add(keras.layers.BatchNormalization(momentum=0.8))
-        model.add(keras.layers.LeakyReLU(alpha=0.2))
-        model.add(keras.layers.Dropout(0.25))
-        model.add(keras.layers.Conv2D(64, kernel_size=3, strides=2, padding="same"))
-        model.add(keras.layers.BatchNormalization(momentum=0.8))
-        model.add(keras.layers.LeakyReLU(alpha=0.2))
-        model.add(keras.layers.Dropout(0.25))
-        model.add(keras.layers.Conv2D(128, kernel_size=3, strides=1, padding="same"))
-        model.add(keras.layers.BatchNormalization(momentum=0.8))
-        model.add(keras.layers.LeakyReLU(alpha=0.2))
-        model.add(keras.layers.Dropout(0.25))
-        model.add(keras.layers.Flatten())
-        model.add(keras.layers.Dense(1))
+        inputs = keras.Input(shape=self.input_shape)
+        hidden = keras.layers.Flatten()(inputs)
+
+        hidden = keras.layers.Dense(512)(hidden)
+        hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
+        hidden = keras.layers.Dense(256)(hidden)
+        hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)    
+        hidden = keras.layers.Dense(self.latent_dim)(hidden)
+        hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)    
+        hidden = keras.layers.Dense(256)(hidden)
+        hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
+        hidden = keras.layers.Dense(512)(hidden)
+        hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
+        validity = keras.layers.Dense(1)(hidden)
+
+        model = keras.Model(inputs=[inputs], outputs=[validity], name ='Discriminator')
         model.summary()
 
-        real_samples = keras.layers.Input(shape=self.input_shape)
-        real = model(real_samples)
-        return keras.Model(real_samples, real)
+        return model
 
     def train(self, train_x, train_y, epochs, batch_size, sample_interval=50):
         # Adversarial ground truths
@@ -185,5 +177,4 @@ if __name__ == '__main__':
     #test_y = test_y == 0
 
     wcgan.train(train_x, train_y, epochs=10000, batch_size=32, sample_interval=100)
-    #gemini.train_classifier(train_x, train_y, epochs=200, batch_size=32)
-    #gemini.classifier.evaluate(test_x, test_y)
+
