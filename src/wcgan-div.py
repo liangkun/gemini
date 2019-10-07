@@ -10,17 +10,22 @@ from functools import partial
 
 class RandomWeightedAverage(keras.layers.Add):
     '''Provided a random weighted average between two inputs.'''
+    def __init__(self, batch_size, **kwargs):
+        super(RandomWeightedAverage, self).__init__(**kwargs)
+        self.batch_size = batch_size
+    
     def _merge_function(self, inputs):
-        alpha = K.random_uniform((128, 1, 1, 1))
+        alpha = K.random_uniform((self.batch_size, 1, 1, 1))
         return (alpha * inputs[0]) + ((1 - alpha) * inputs[1])
 
 class WCGAN():
     '''WCGAN using wasserstein divergancy'''
-    def __init__(self):
+    def __init__(self, batch_size=64):
         self.channels = 1
         self.input_shape = (28, 28, 1)
         self.latent_dim = 100
         self.n_classes = 10
+        self.batch_size = batch_size
 
         self.n_discriminators = 5
         self.optimizer = keras.optimizers.Adam(0.0001, beta_1=0.5, beta_2=0.9)
@@ -43,7 +48,7 @@ class WCGAN():
         real = self.discriminator([real_samples, labels])
         fake = self.discriminator([fake_samples, labels])
 
-        interpolated_samples = RandomWeightedAverage()([real_samples, fake_samples])
+        interpolated_samples = RandomWeightedAverage(batch_size=self.batch_size)([real_samples, fake_samples])
         interpolated = self.discriminator([interpolated_samples, labels])
 
         partial_gp_loss = partial(self.gradient_penalty_loss,
@@ -123,11 +128,11 @@ class WCGAN():
 
         return model
 
-    def train(self, train_x, train_y, epochs, batch_size, sample_interval=50):
+    def train(self, train_x, train_y, epochs, sample_interval=50):
         # Adversarial ground truths
-        real = -np.ones((batch_size, 1))
-        fake =  np.ones((batch_size, 1))
-        dummy = np.zeros((batch_size, 1))  # Dummy gt for gradient penalty
+        real = -np.ones((self.batch_size, 1))
+        fake =  np.ones((self.batch_size, 1))
+        dummy = np.zeros((self.batch_size, 1))  # Dummy gt for gradient penalty
         for epoch in range(epochs):
             for _ in range(self.n_discriminators):
                 # ---------------------
@@ -135,12 +140,12 @@ class WCGAN():
                 # ---------------------
 
                 # Select a random batch of images
-                idx = np.random.randint(0, train_x.shape[0], batch_size)
+                idx = np.random.randint(0, train_x.shape[0], self.batch_size)
                 imgs = train_x[idx]
                 labels = train_y[idx]
 
                 # Sample generator input
-                noise = np.random.normal(0, 1, (batch_size, self.latent_dim))
+                noise = np.random.normal(0, 1, (self.batch_size, self.latent_dim))
 
                 # Train the discriminator
                 d_loss = self.discriminator_model.train_on_batch([imgs, labels, noise],
@@ -149,8 +154,8 @@ class WCGAN():
             # ---------------------
             #  Train Generator
             # ---------------------
-            noise = np.random.normal(0, 1, (batch_size, self.latent_dim))
-            labels = np.random.randint(0, self.n_classes, batch_size).reshape(-1, 1)
+            noise = np.random.normal(0, 1, (self.batch_size, self.latent_dim))
+            labels = np.random.randint(0, self.n_classes, self.batch_size).reshape(-1, 1)
             g_loss = self.generator_model.train_on_batch([noise, labels], real)
 
             # Plot the progress
@@ -189,5 +194,5 @@ if __name__ == '__main__':
     test_x = np.expand_dims(test_x, axis=3)
     #test_y = test_y == 0
 
-    wcgan.train(train_x, train_y, epochs=30001, batch_size=128, sample_interval=200)
+    wcgan.train(train_x, train_y, epochs=30001, sample_interval=200)
 
