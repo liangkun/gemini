@@ -67,7 +67,7 @@ class CWGAN():
             outputs=[real, fake, interpolated])
         self.discriminator_model.compile(optimizer=self.optimizer,
             loss=[self.wasserstein_loss, self.wasserstein_loss, partial_gp_loss],
-            loss_weights=[1, 1, 5])
+            loss_weights=[1, 1, 2])
 
         # construct computational graph for generator
         self.discriminator.trainable = False
@@ -85,7 +85,7 @@ class CWGAN():
         gradients_sqr = K.square(gradients)
         gradients_sqr_sum = K.sum(gradients_sqr, axis=np.arange(1, len(gradients_sqr.shape)))
         gradient_l2_norm = K.sqrt(gradients_sqr_sum)
-        gradient_penalty = 2 * (gradient_l2_norm ** 6)
+        gradient_penalty = gradient_l2_norm ** 6
         # return the mean as loss over all the batch samples
         return K.mean(gradient_penalty)
 
@@ -103,7 +103,7 @@ class CWGAN():
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         hidden = keras.layers.Dense(512)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
-        fake_sample = keras.layers.Dense(self.input_dim, activation='tanh')(hidden)
+        fake_sample = keras.layers.Dense(self.input_dim, activation='sigmoid')(hidden)
 
         model = keras.Model(inputs=[noise, label], outputs=fake_sample, name='Generator')
         model.summary()
@@ -134,8 +134,9 @@ class CWGAN():
 
     def train(self, train_x, train_y, epochs, sample_interval=50):
         # setup logs
-        callback = TensorBoard('./log')
-        callback.set_model(self.discriminator_model)
+        discriminator_callback = TensorBoard('./log')
+        discriminator_callback.set_model(self.discriminator_model)
+
         # Adversarial ground truths
         real = -np.ones((self.batch_size, 1))
         fake =  np.ones((self.batch_size, 1))
@@ -157,7 +158,7 @@ class CWGAN():
                 # Train the discriminator
                 d_loss = self.discriminator_model.train_on_batch([imgs, noise, labels],
                                                                 [real, fake, dummy])
-            write_log(callback, ['real_loss', 'fake_loss', 'gradient'], d_loss, epoch)
+            write_log(discriminator_callback, ['real_loss', 'fake_loss', 'gradient'], d_loss, epoch)
             # ---------------------
             #  Train Generator
             # ---------------------
@@ -183,7 +184,7 @@ class CWGAN():
             labels = self.label_table[labels]
             gen_imgs = self.generator.predict([noise, labels])
             # Rescale images 0 - 1
-            gen_imgs = 0.5 * gen_imgs + 0.5
+            # gen_imgs = 0.5 * gen_imgs + 0.5
             gen_imgs = np.reshape(gen_imgs, (-1, 28, 28))
 
             for j in range(c):
@@ -206,7 +207,7 @@ class CWGAN():
 
 if __name__ == '__main__':
     (train_x, train_y), (test_x, test_y) = keras.datasets.mnist.load_data()
-    train_x = (train_x.astype(np.float32) - 127.5) / 127.5
+    train_x = train_x.astype(np.float32) / 255
     input_dim = np.prod(train_x.shape[1:])
     train_x = np.reshape(train_x, (-1, input_dim))
 

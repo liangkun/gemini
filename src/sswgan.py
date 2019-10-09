@@ -58,6 +58,17 @@ class SSWGAN():
         self.adversarial_autoencoder = keras.Model(inputs, [reconstructed, validity])
         self.adversarial_autoencoder.compile(loss=['mse', self.wasserstein_loss],
             loss_weights=[20, 1], optimizer=self.optimizer)
+        
+        # build final classifier
+        self.classifier = self.build_classifier()
+        inputs = keras.Input(shape=(self.input_dim,))
+        latent = self.encoder(inputs)
+        predict = self.classifier(latent)
+        self.encoder.trainable = False  # freeze encoder in classifier
+        self.classifier_model = keras.Model(inputs, predict)
+        self.classifier.compile(loss='binary_crossentropy',
+            optimizer=self.optimizer,
+            metrics=['accuracy'])
 
     def gradient_penalty_loss(self, y_true, y_pred, averaged_samples):
         gradients = K.gradients(y_pred, averaged_samples)[0]
@@ -78,8 +89,10 @@ class SSWGAN():
         hidden = keras.layers.Dense(256)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         encoded = keras.layers.Dense(self.latent_dim)(hidden)
+        model = keras.Model(inputs, encoded, name='encoder')
+        model.summary()
 
-        return keras.Model(inputs, encoded, name='encoder')
+        return model
 
     def build_decoder(self):
         encoded = keras.Input(shape=(self.latent_dim,))
@@ -88,8 +101,10 @@ class SSWGAN():
         hidden = keras.layers.Dense(512)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         reconstructed = keras.layers.Dense(self.input_dim, activation='tanh')(hidden)
+        model = keras.Model(encoded, reconstructed, name='decoder')
+        model.summary()
 
-        return keras.Model(encoded, reconstructed, name='decoder')
+        return model
 
     def build_discriminator(self):
         encoded = keras.Input(shape=(self.latent_dim,))
@@ -98,8 +113,10 @@ class SSWGAN():
         hidden = keras.layers.Dense(256)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         validity = keras.layers.Dense(1)(hidden)
+        model = keras.Model(encoded, validity, name='discriminator')
+        model.summary()
 
-        return keras.Model(encoded, validity, name='discriminator')
+        return model
 
     def build_classifier(self):
         encoded = keras.Input(shape=(self.latent_dim,))
@@ -108,8 +125,10 @@ class SSWGAN():
         hidden = keras.layers.Dense(256)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         validity = keras.layers.Dense(1, activation="sigmoid")(hidden)
+        model = keras.Model(encoded, validity, name='classifier')
+        model.summary()
 
-        return keras.Model(encoded, validity, name='classifier')
+        return model
 
     def train(self, train_x, train_y, epoches, sample_interval):
         self.train_autoencoder(train_x, train_y, epoches, sample_interval)
@@ -147,7 +166,8 @@ class SSWGAN():
                 self.sample(epoch)
 
     def train_classifier(self, train_x, train_y, epoches, sample_interval):
-        pass
+        loss = self.classifier_model.fit(train_x, train_y,
+            batch_size=self.batch_size, epochs=epoches, validation_split=0.2, verbose=1)
 
     def sample(self, epoch):
         r, c = 5, 5
