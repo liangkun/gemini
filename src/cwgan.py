@@ -137,41 +137,41 @@ class CWGAN():
         discriminator_callback = TensorBoard('./log')
         discriminator_callback.set_model(self.discriminator_model)
 
-        # Adversarial ground truths
+        # adversarial ground truths
         real = -np.ones((self.batch_size, 1))
         fake =  np.ones((self.batch_size, 1))
         dummy = np.zeros((self.batch_size, 1))  # Dummy gt for gradient penalty
         for epoch in range(epochs):
             for _ in range(self.n_discriminators):
                 # ---------------------
-                #  Train Discriminator
+                #  train Discriminator
                 # ---------------------
-                # Select a random batch of images
+                # Select a random batch of samples
                 idx = np.random.randint(0, train_x.shape[0], self.batch_size)
                 imgs = train_x[idx]
                 labels = train_y[idx]
                 labels = self.label_table[labels]
 
-                # Sample generator input
+                # sample generator input
                 noise = np.random.normal(0, 1, (self.batch_size, self.latent_dim))
 
-                # Train the discriminator
+                # train the discriminator
                 d_loss = self.discriminator_model.train_on_batch([imgs, noise, labels],
                                                                 [real, fake, dummy])
             write_log(discriminator_callback, ['real_loss', 'fake_loss', 'gradient'], d_loss, epoch)
+
             # ---------------------
-            #  Train Generator
+            #  train Generator
             # ---------------------
             noise = np.random.normal(0, 1, (self.batch_size, self.latent_dim))
             labels = np.random.randint(0, self.n_classes, self.batch_size)
             labels = self.label_table[labels]
             g_loss = self.generator_model.train_on_batch([noise, labels], real)
 
-            # Plot the progress
-            print ("%d [D loss: %f] [G loss: %f]" % (epoch, d_loss[0], g_loss))
+            print("%d [D loss: %f] [G loss: %f]" % (epoch, d_loss[0], g_loss))
 
-            # If at save interval => save generated image samples
-            if epoch % sample_interval == 0:
+            # ff at save interval => save generated image samples
+            if sample_interval > 0 and epoch % sample_interval == 0:
                 self.sample(epoch)
 
     def sample(self, epoch):
@@ -183,8 +183,6 @@ class CWGAN():
             labels = np.arange(0, 10)
             labels = self.label_table[labels]
             gen_imgs = self.generator.predict([noise, labels])
-            # Rescale images 0 - 1
-            # gen_imgs = 0.5 * gen_imgs + 0.5
             gen_imgs = np.reshape(gen_imgs, (-1, 28, 28))
 
             for j in range(c):
