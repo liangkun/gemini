@@ -4,9 +4,19 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
-import tensorflow.keras.backend as K
 from tensorflow import keras
+import tensorflow.keras.backend as K
+from tensorflow.keras.callbacks import TensorBoard
 from functools import partial
+
+def write_log(callback, names, logs, batch_no):
+    for name, value in zip(names, logs):
+        summary = tf.Summary()
+        summary_value = summary.value.add()
+        summary_value.simple_value = value
+        summary_value.tag = name
+        callback.writer.add_summary(summary, batch_no)
+        callback.writer.flush()
 
 class RandomWeightedAverage(keras.layers.Add):
     '''Provided a random weighted average between two inputs.'''
@@ -123,6 +133,9 @@ class CWGAN():
         return model
 
     def train(self, train_x, train_y, epochs, sample_interval=50):
+        # setup logs
+        callback = TensorBoard('./log')
+        callback.set_model(self.discriminator_model)
         # Adversarial ground truths
         real = -np.ones((self.batch_size, 1))
         fake =  np.ones((self.batch_size, 1))
@@ -144,7 +157,7 @@ class CWGAN():
                 # Train the discriminator
                 d_loss = self.discriminator_model.train_on_batch([imgs, noise, labels],
                                                                 [real, fake, dummy])
-
+            write_log(callback, ['real_loss', 'fake_loss', 'gradient'], d_loss, epoch)
             # ---------------------
             #  Train Generator
             # ---------------------
