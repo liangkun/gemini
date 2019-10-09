@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
+# Authors: liangkun@ishumei.com
 
 import numpy as np
 import matplotlib.pyplot as plt
