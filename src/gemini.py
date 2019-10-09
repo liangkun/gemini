@@ -22,16 +22,17 @@ class Gemini():
         
         # init models
         self.input_dim = self.train_x.shape[1]
+        self.baseline = self.build_baseline_classifier()
         self.sswgan = SSWGAN(self.input_dim)
         self.cwgan = CWGAN(self.input_dim)
 
-        self.build_test_classifier()
     
-    def build_test_classifier(self):
+    def build_baseline_classifier(self):
         inputs = keras.Input(shape=(self.input_dim,))
         predict = keras.layers.Dense(1, activation='sigmoid')(inputs)
-        self.test_classifier = keras.Model(inputs, predict)
-        self.test_classifier.compile(loss='binary_crossentropy', optimizer='sgd', metrics=['accuracy'])
+        model = keras.Model(inputs, predict, name='baseline')
+        model.compile(loss='binary_crossentropy', optimizer='sgd', metrics=['accuracy'])
+        return model
     
 
     def load_data(self, path):
@@ -56,7 +57,6 @@ class Gemini():
     def load_token_sample(self, file):
         sample = pd.read_csv(file, sep=',', header=None)
         sample_x = sample.iloc[:, :-1]
-        sample_x = sample_x.dropna()
         sample_y = sample.iloc[:, -1]
         return sample_x, sample_y
 
@@ -64,6 +64,7 @@ class Gemini():
         self.feature_min = np.min(train_x, axis=0)
         self.feature_max = np.max(train_x, axis=0)
         self.feature_interval = self.feature_max - self.feature_min
+        self.feature_interval[self.feature_interval == 0] = 1
 
     def normalize_samples(self, x):
         x = (x - self.feature_min) / self.feature_interval
@@ -72,15 +73,18 @@ class Gemini():
         return x
 
     def train(self):
-        print(self.train_x)
-        self.test_classifier.fit(self.train_x, self.train_y, validation_split=0.1, verbose=1)
-        #self.sswgan.train_autoencoder(self.train_x, self.train_y, epoches=21, sample_interval=-1)
-        #self.sswgan.train_classifier(self.train_x, self.train_y, epoches=21, sample_interval=-1)
+        print('trainning baseline classifier')
+        self.baseline.fit(self.train_x, self.train_y, validation_split=0.1, verbose=1)
+
+        print('training sswgan classifier')
+        self.sswgan.train_autoencoder(self.train_x, self.train_y, epoches=21, sample_interval=-1)
+        self.sswgan.train_classifier(self.train_x, self.train_y, epoches=21, sample_interval=-1)
 
     def evaluate(self):
-        print('evaluating on test set')
-        self.test_classifier.evaluate(self.test_x, self.test_y, verbose=1)
-        #self.sswgan.classifier_model.evaluate(self.test_x, self.test_y, verbose=1)
+        print('evaluating baseline classifier on test set')
+        self.baseline.evaluate(self.test_x, self.test_y, verbose=1)
+        print('evalueating sswgan classifier on test set')
+        self.sswgan.classifier_model.evaluate(self.test_x, self.test_y, verbose=1)
     
     def data_summary(self):
         print('train shape: %s, test shape: %s' % (self.train_x.shape, self.test_x.shape))
