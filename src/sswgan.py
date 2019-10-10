@@ -98,9 +98,9 @@ class SSWGAN():
     
     def build_encoder(self):
         inputs = keras.Input(shape=(self.input_dim,))
-        hidden = keras.layers.Dense(96)(inputs)
+        hidden = keras.layers.Dense(512)(inputs)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
-        hidden = keras.layers.Dense(48)(hidden)
+        hidden = keras.layers.Dense(256)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         encoded = keras.layers.Dense(self.latent_dim)(hidden)
         model = keras.Model(inputs, encoded, name='encoder')
@@ -110,9 +110,9 @@ class SSWGAN():
 
     def build_decoder(self):
         encoded = keras.Input(shape=(self.latent_dim,))
-        hidden = keras.layers.Dense(48)(encoded)
+        hidden = keras.layers.Dense(256)(encoded)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
-        hidden = keras.layers.Dense(96)(hidden)
+        hidden = keras.layers.Dense(512)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         reconstructed = keras.layers.Dense(self.input_dim, activation='sigmoid')(hidden)
         model = keras.Model(encoded, reconstructed, name='decoder')
@@ -122,9 +122,9 @@ class SSWGAN():
 
     def build_discriminator(self):
         encoded = keras.Input(shape=(self.latent_dim,))
-        hidden = keras.layers.Dense(16)(encoded)
+        hidden = keras.layers.Dense(512)(encoded)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
-        hidden = keras.layers.Dense(16)(hidden)
+        hidden = keras.layers.Dense(256)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         validity = keras.layers.Dense(1)(hidden)
         model = keras.Model(encoded, validity, name='discriminator')
@@ -134,9 +134,9 @@ class SSWGAN():
 
     def build_classifier(self):
         encoded = keras.Input(shape=(self.latent_dim,))
-        hidden = keras.layers.Dense(16)(encoded)
+        hidden = keras.layers.Dense(512)(encoded)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
-        hidden = keras.layers.Dense(16)(hidden)
+        hidden = keras.layers.Dense(256)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         validity = keras.layers.Dense(1, activation="sigmoid")(hidden)
         model = keras.Model(encoded, validity, name='classifier')
@@ -179,7 +179,7 @@ class SSWGAN():
 
             g_loss = self.adversarial_autoencoder.train_on_batch(noisy_inputs, [inputs, real])
 
-            print("%d [D loss: %f] [G loss: %f]" % (epoch, d_loss[0], g_loss[0]))
+            print("SSWGAN %d [D loss: %f] [G loss: %f]" % (epoch, d_loss[0], g_loss[0]))
             
             # ff at save interval => save generated image samples
             if sample_interval > 0 and epoch % sample_interval == 0:

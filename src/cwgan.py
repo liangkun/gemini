@@ -169,7 +169,7 @@ class CWGAN():
             labels = self.label_table[labels]
             g_loss = self.generator_model.train_on_batch([noise, labels], real)
 
-            print("%d [D loss: %f] [G loss: %f]" % (epoch, d_loss[0], g_loss))
+            print("CWGAN %d [D loss: %f] [G loss: %f]" % (epoch, d_loss[0], g_loss))
 
             # ff at save interval => save generated image samples
             if sample_interval > 0 and epoch % sample_interval == 0:
@@ -180,10 +180,12 @@ class CWGAN():
         fig, axs = plt.subplots(r, c)
 
         for i in range(r):
-            noise = np.random.normal(0, 1, (c, self.latent_dim))
-            labels = np.arange(0, 10)
-            labels = self.label_table[labels]
-            gen_imgs = self.generator.predict([noise, labels])
+            #noise = np.random.normal(0, 1, (c, self.latent_dim))
+            #labels = np.arange(0, 10)
+            #labels = self.label_table[labels]
+            #gen_imgs = self.generator.predict([noise, labels])
+
+            gen_imgs = self.generate(i, c)
             gen_imgs = np.reshape(gen_imgs, (-1, 28, 28))
 
             for j in range(c):
@@ -200,8 +202,12 @@ class CWGAN():
         self.generator = keras.models.load_model(path + '/generator.h5')
         self.discriminator = keras.models.load_model(path + '/discriminator.h5')
 
-    def generate(self, labels, n_samples=1):
-        pass
+    def generate(self, label, n_samples=1):
+        noise = np.random.normal(0, 1, (n_samples, self.latent_dim))
+        labels = np.empty(n_samples, dtype=int)
+        labels.fill(int(label))
+        labels = self.label_table[labels]
+        return self.generator.predict([noise, labels])
 
 
 if __name__ == '__main__':
