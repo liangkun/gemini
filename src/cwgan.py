@@ -9,36 +9,21 @@ from tensorflow import keras
 import tensorflow.keras.backend as K
 from tensorflow.keras.callbacks import TensorBoard
 from functools import partial
-
-def write_log(callback, names, logs, batch_no):
-    for name, value in zip(names, logs):
-        summary = tf.Summary()
-        summary_value = summary.value.add()
-        summary_value.simple_value = value
-        summary_value.tag = name
-        callback.writer.add_summary(summary, batch_no)
-        callback.writer.flush()
-
-class RandomWeightedAverage(keras.layers.Add):
-    '''Provided a random weighted average between two inputs.'''
-    def __init__(self, batch_size, **kwargs):
-        super(RandomWeightedAverage, self).__init__(**kwargs)
-        self.batch_size = batch_size
-    
-    def _merge_function(self, inputs):
-        alpha = K.random_uniform((self.batch_size, 1))
-        return (alpha * inputs[0]) + ((1 - alpha) * inputs[1])
+from utils import write_log
+from utils import RandomWeightedAverage
 
 class CWGAN():
     '''Conditional WGAN using wasserstein divergency'''
-    def __init__(self, input_dim, batch_size=64):
+    def __init__(self, input_dim, latent_dim=32, n_classes=10, batch_size=64, n_discriminators=5,
+                 log=None):
         self.input_dim = input_dim
-        self.latent_dim = 32
-        self.n_classes = 10
+        self.latent_dim = latent_dim
+        self.n_classes = n_classes
         self.batch_size = batch_size
         self.label_table = np.eye(self.n_classes)
+        self.n_discriminators = n_discriminators
+        self.log = log
 
-        self.n_discriminators = 5
         self.optimizer = keras.optimizers.Adam(0.0001, beta_1=0.5, beta_2=0.9)
 
         self.generator = self.build_generator()
@@ -135,14 +120,17 @@ class CWGAN():
 
     def train(self, train_x, train_y, epochs, sample_interval=50):
         # setup logs
-        discriminator_callback = TensorBoard('./log')
-        discriminator_callback.set_model(self.discriminator_model)
+        if self.log:
+            tb_callback = TensorBoard(self.log)
+            tb_callback.set_model(self.generator_model)
+        tb_names = ['d_loss', 'd_r_loss', 'd_f_loss', 'd_gp_loss', 'g_loss']
 
         # adversarial ground truths
         real = -np.ones((self.batch_size, 1))
         fake =  np.ones((self.batch_size, 1))
         dummy = np.zeros((self.batch_size, 1))  # Dummy gt for gradient penalty
         for epoch in range(epochs):
+            tb_values = []
             for _ in range(self.n_discriminators):
                 # ---------------------
                 #  train Discriminator
@@ -159,7 +147,7 @@ class CWGAN():
                 # train the discriminator
                 d_loss = self.discriminator_model.train_on_batch([imgs, noise, labels],
                                                                 [real, fake, dummy])
-            write_log(discriminator_callback, ['real_loss', 'fake_loss', 'gradient'], d_loss, epoch)
+            tb_values.extend(d_loss)
 
             # ---------------------
             #  train Generator
@@ -168,8 +156,11 @@ class CWGAN():
             labels = np.random.randint(0, self.n_classes, self.batch_size)
             labels = self.label_table[labels]
             g_loss = self.generator_model.train_on_batch([noise, labels], real)
+            tb_values.append(g_loss)
 
-            print("CWGAN %d [D loss: %f] [G loss: %f]" % (epoch, d_loss[0], g_loss))
+            write_log('CWGAN', None, tb_names, tb_values, epoch, target='stdout')
+            if self.log:
+                write_log('CWGAN', tb_callback, tb_names, tb_values, epoch, target='tensorboard')
 
             # ff at save interval => save generated image samples
             if sample_interval > 0 and epoch % sample_interval == 0:
@@ -180,11 +171,6 @@ class CWGAN():
         fig, axs = plt.subplots(r, c)
 
         for i in range(r):
-            #noise = np.random.normal(0, 1, (c, self.latent_dim))
-            #labels = np.arange(0, 10)
-            #labels = self.label_table[labels]
-            #gen_imgs = self.generator.predict([noise, labels])
-
             gen_imgs = self.generate(i, c)
             gen_imgs = np.reshape(gen_imgs, (-1, 28, 28))
 
@@ -195,12 +181,12 @@ class CWGAN():
         plt.close()
     
     def save(self, path):
-        self.generator.save(path + '/generator.h5')
-        self.discriminator.save(path + '/discriminator.h5')
+        self.generator.save(path + '/cwgan_generator.h5')
+        self.discriminator.save(path + '/cwgan_discriminator.h5')
     
     def load(self, path):
-        self.generator = keras.models.load_model(path + '/generator.h5')
-        self.discriminator = keras.models.load_model(path + '/discriminator.h5')
+        self.generator = keras.models.load_model(path + '/cwgan_generator.h5')
+        self.discriminator = keras.models.load_model(path + '/cwgan_discriminator.h5')
 
     def generate(self, label, n_samples=1):
         noise = np.random.normal(0, 1, (n_samples, self.latent_dim))
@@ -216,11 +202,10 @@ if __name__ == '__main__':
     input_dim = np.prod(train_x.shape[1:])
     train_x = np.reshape(train_x, (-1, input_dim))
 
-    cwgan = CWGAN(input_dim=input_dim)
+    cwgan = CWGAN(input_dim=input_dim, latent_dim=32, n_classes=10, batch_size=64, log='./cwgan_log')
     cwgan.train(train_x, train_y, epochs=20001, sample_interval=200)
     cwgan.save('model')
 
     cwgan2 = CWGAN(input_dim=input_dim)
     cwgan2.load('model')
     cwgan2.sample(epoch=1)
-

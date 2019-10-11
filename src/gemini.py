@@ -11,10 +11,10 @@ from sswgan import SSWGAN
 
 class Gemini():
     '''Fraud token detection using GANs'''
-    def __init__(self, data_path, gen_samples):
+    def __init__(self, data_path, n_gen_samples):
         # init params
-        self.gen_samples = gen_samples
-        self.n_gen_samples = 150000
+        self.gen_samples = n_gen_samples > 0
+        self.n_gen_samples = n_gen_samples
 
         # load and normalize data
         self.train_x, self.train_y, self.test_x, self.test_y = self.load_data(data_path)
@@ -27,10 +27,10 @@ class Gemini():
         # init models
         self.input_dim = self.train_x.shape[1]
         self.baseline = self.build_baseline_classifier()
-        self.sswgan = SSWGAN(self.input_dim)
+        self.sswgan = SSWGAN(self.input_dim, batch_size=128, log='./sswgan_log')
 
         if (self.gen_samples):
-            self.cwgan = self.get_generator(retrain=False)
+            self.cwgan = self.get_generator(retrain=True)
             self.gen_x = self.cwgan.generate(1, self.n_gen_samples)
             self.gen_y = np.empty(self.n_gen_samples, dtype=int)
             self.gen_y.fill(1)
@@ -39,9 +39,11 @@ class Gemini():
 
     def build_baseline_classifier(self):
         inputs = keras.Input(shape=(self.input_dim,))
-        predict = keras.layers.Dense(1, activation='sigmoid')(inputs)
+        hidden = keras.layers.Dense(96)(inputs)
+        hidden = keras.layers.LeakyReLU(0.2)(hidden)
+        predict = keras.layers.Dense(1, activation='sigmoid')(hidden)
         model = keras.Model(inputs, predict, name='baseline')
-        model.compile(loss='binary_crossentropy', optimizer='sgd', metrics=['accuracy'])
+        model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
         return model
 
     def load_data(self, path):
@@ -57,6 +59,8 @@ class Gemini():
         test_black_y[:] = 1
         test_white_x, test_white_y = self.load_token_sample(path + '/test_white.csv')
         test_white_y[:] = 0
+        test_white_x = test_white_x.sample(test_black_x.shape[0])
+        test_white_y = test_white_y[:test_black_x.shape[0]]
 
         test_x = pd.concat([test_black_x, test_white_x], ignore_index=True)
         test_y = pd.concat([test_black_y, test_white_y], ignore_index=True)
@@ -93,11 +97,11 @@ class Gemini():
             train_y = self.train_y
         
         print('trainning baseline classifier')
-        self.baseline.fit(train_x, train_y, epochs=2, validation_split=0.1, verbose=1)
+        self.baseline.fit(train_x, train_y, epochs=100, validation_split=0.1, verbose=1)
 
         print('training sswgan classifier')
-        self.sswgan.train_autoencoder(train_x, train_y, epoches=200, sample_interval=-1)
-        self.sswgan.train_classifier(train_x, train_y, epoches=2, sample_interval=-1)
+        self.sswgan.train_autoencoder(train_x, train_y, epochs=30000, sample_interval=-1)
+        self.sswgan.train_classifier(train_x, train_y, epochs=100, sample_interval=-1)
 
     def evaluate(self):
         print('evaluating baseline classifier on test set')
@@ -106,20 +110,29 @@ class Gemini():
         print('evalueating sswgan classifier on test set')
         self.sswgan.classifier_model.evaluate(self.test_x, self.test_y, verbose=1)
     
-    def get_generator(self, retrain=False, path='./token_gen_model'):
-        cwgan = CWGAN(self.input_dim)
+    def get_generator(self, retrain=False, path='./model'):
+        cwgan = CWGAN(self.input_dim, n_classes=2, batch_size=128, log='./cwgan_log')
         if retrain:
-            cwgan.train(self.train_x, self.train_y, epochs=200, sample_interval=-1)
+            cwgan.train(self.train_x, self.train_y, epochs=30000, sample_interval=-1)
             cwgan.save(path)
         else:
             cwgan.load(path)
         return cwgan
     
+    def save(self, path):
+        self.baseline.save(path + '/baseline.h5')
+        self.sswgan.save(path)
+
+    def load(self, path):
+        self.sswgan.load(path)
+        self.baseline = keras.models.load_model(path + '/baseline.h5')
+
     def data_summary(self):
         print('train shape: %s, test shape: %s' % (self.train_x.shape, self.test_x.shape))
 
 if __name__ == '__main__':
-    gemini = Gemini('~/workspace/token_sample_201909', gen_samples=True)
+    gemini = Gemini('~/workspace/token_sample_201909', n_gen_samples=300000)
     gemini.data_summary()
     gemini.train()
     gemini.evaluate()
+    gemini.save('./model')

@@ -9,34 +9,18 @@ from tensorflow import keras
 import tensorflow.keras.backend as K
 from tensorflow.keras.callbacks import TensorBoard
 from functools import partial
-
-def write_log(callback, names, logs, batch_no):
-    for name, value in zip(names, logs):
-        summary = tf.Summary()
-        summary_value = summary.value.add()
-        summary_value.simple_value = value
-        summary_value.tag = name
-        callback.writer.add_summary(summary, batch_no)
-        callback.writer.flush()
-
-class RandomWeightedAverage(keras.layers.Add):
-    '''Provided a random weighted average between two inputs.'''
-    def __init__(self, batch_size, **kwargs):
-        super(RandomWeightedAverage, self).__init__(**kwargs)
-        self.batch_size = batch_size
-    
-    def _merge_function(self, inputs):
-        alpha = K.random_uniform((self.batch_size, 1))
-        return (alpha * inputs[0]) + ((1 - alpha) * inputs[1])
+from utils import write_log
+from utils import RandomWeightedAverage
 
 class SSWGAN():
     '''Semi Supervised WGAN.'''
-    def __init__(self, input_dim, batch_size=64):
+    def __init__(self, input_dim, latent_dim=32, batch_size=64, n_discriminators=5, log=None):
         self.input_dim = input_dim
-        self.latent_dim = 32
+        self.latent_dim = latent_dim
         self.batch_size = batch_size
         self.optimizer = keras.optimizers.Adam(0.0002, 0.5)
-        self.n_discriminators = 5
+        self.n_discriminators = n_discriminators
+        self.log = log
 
         # build and compile the discriminator
         self.discriminator = self.build_discriminator()
@@ -98,9 +82,9 @@ class SSWGAN():
     
     def build_encoder(self):
         inputs = keras.Input(shape=(self.input_dim,))
-        hidden = keras.layers.Dense(512)(inputs)
+        hidden = keras.layers.Dense(96)(inputs)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
-        hidden = keras.layers.Dense(256)(hidden)
+        hidden = keras.layers.Dense(48)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         encoded = keras.layers.Dense(self.latent_dim)(hidden)
         model = keras.Model(inputs, encoded, name='encoder')
@@ -110,9 +94,9 @@ class SSWGAN():
 
     def build_decoder(self):
         encoded = keras.Input(shape=(self.latent_dim,))
-        hidden = keras.layers.Dense(256)(encoded)
+        hidden = keras.layers.Dense(48)(encoded)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
-        hidden = keras.layers.Dense(512)(hidden)
+        hidden = keras.layers.Dense(96)(hidden)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         reconstructed = keras.layers.Dense(self.input_dim, activation='sigmoid')(hidden)
         model = keras.Model(encoded, reconstructed, name='decoder')
@@ -122,10 +106,10 @@ class SSWGAN():
 
     def build_discriminator(self):
         encoded = keras.Input(shape=(self.latent_dim,))
-        hidden = keras.layers.Dense(512)(encoded)
+        hidden = keras.layers.Dense(48)(encoded)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
-        hidden = keras.layers.Dense(256)(hidden)
-        hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
+        #hidden = keras.layers.Dense(48)(hidden)
+        #hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         validity = keras.layers.Dense(1)(hidden)
         model = keras.Model(encoded, validity, name='discriminator')
         model.summary()
@@ -134,27 +118,35 @@ class SSWGAN():
 
     def build_classifier(self):
         encoded = keras.Input(shape=(self.latent_dim,))
-        hidden = keras.layers.Dense(512)(encoded)
+        hidden = keras.layers.Dense(48)(encoded)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
-        hidden = keras.layers.Dense(256)(hidden)
-        hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
+        #hidden = keras.layers.Dense(48)(hidden)
+        #hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         validity = keras.layers.Dense(1, activation="sigmoid")(hidden)
         model = keras.Model(encoded, validity, name='classifier')
         model.summary()
 
         return model
 
-    def train(self, train_x, train_y, epoches, sample_interval):
-        self.train_autoencoder(train_x, train_y, epoches, sample_interval)
-        self.train_classifier(train_x, train_y, epoches, sample_interval)
+    def train(self, train_x, train_y, epochs, sample_interval):
+        self.train_autoencoder(train_x, train_y, epochs, sample_interval)
+        self.train_classifier(train_x, train_y, epochs, sample_interval)
     
-    def train_autoencoder(self, train_x, train_y, epoches, sample_interval):
+    def train_autoencoder(self, train_x, train_y, epochs, sample_interval):
+        # setup logs
+        if self.log:
+            tb_callback = TensorBoard(self.log)
+            tb_callback.set_model(self.adversarial_autoencoder)
+        tb_names = ['d_loss', 'd_r_loss', 'd_f_loss', 'd_gp_loss',
+                    'g_loss', 'g_mse', 'g_d_loss']
+
         # adversarial ground truths
         real = np.ones((self.batch_size, 1))
         fake = -np.ones((self.batch_size, 1))
         dummy = np.zeros((self.batch_size, 1))
 
-        for epoch in range(epoches):
+        for epoch in range(epochs):
+            tb_values = []
             # ------------------------------
             # train discriminator
             # ------------------------------
@@ -164,6 +156,7 @@ class SSWGAN():
                 inputs = train_x[idx]
                 latent_fake = self.encoder.predict(inputs)
                 d_loss = self.discriminator_model.train_on_batch([latent_real, latent_fake], [real, fake, dummy])
+            tb_values.extend(d_loss)
 
             # ------------------------------
             # train generator
@@ -178,17 +171,24 @@ class SSWGAN():
                 noisy_inputs[i, noisy_idx[i]] = 0
 
             g_loss = self.adversarial_autoencoder.train_on_batch(noisy_inputs, [inputs, real])
+            tb_values.extend(g_loss)
 
-            print("SSWGAN %d [D loss: %f] [G loss: %f]" % (epoch, d_loss[0], g_loss[0]))
+            write_log('SSWGAN', None, tb_names, tb_values, epoch, target='stdout')
+            if self.log:
+                write_log('SSWGAN', tb_callback, tb_names, tb_values, epoch, target='tensorboard')
             
             # ff at save interval => save generated image samples
             if sample_interval > 0 and epoch % sample_interval == 0:
                 self.sample(epoch)
 
-    def train_classifier(self, train_x, train_y, epoches, sample_interval):
+    def train_classifier(self, train_x, train_y, epochs, sample_interval):
+        callbacks = []
+        if self.log:
+            callbacks.append(TensorBoard(log_dir=self.log))
+
         loss = self.classifier_model.fit(train_x, train_y,
-            batch_size=self.batch_size, epochs=epoches, validation_split=0.2, verbose=1,
-            callbacks=[TensorBoard(log_dir='./log')])
+            batch_size=self.batch_size, epochs=epochs, validation_split=0.2, verbose=1,
+            callbacks=callbacks)
 
     def sample(self, epoch):
         r, c = 5, 5
@@ -205,10 +205,12 @@ class SSWGAN():
         plt.close()
 
     def save(self, path):
-        pass
-
+        self.classifier_model.save(path + '/sswgan_classifier.h5')
+        self.encoder.save(path + '/sswgan_encoder.h5')
+    
     def load(self, path):
-        pass
+        self.classifier_model = keras.models.load_model(path + '//sswgan_classifier.h5')
+        self.encoder = keras.models.load_model(path + '/sswgan_encoder.h5')
 
 
 if __name__ == '__main__':
@@ -222,9 +224,9 @@ if __name__ == '__main__':
     train_x = np.reshape(train_x, (-1, input_dim))
     test_x = np.reshape(test_x, (-1, input_dim))
 
-    sswgan = SSWGAN(input_dim, batch_size=128)
-    sswgan.train_autoencoder(train_x, train_y, epoches=20001, sample_interval=200)
-    sswgan.train_classifier(train_x, train_y, epoches=101, sample_interval=-1)
+    sswgan = SSWGAN(input_dim, batch_size=128, log='./sswgan_log')
+    sswgan.train_autoencoder(train_x, train_y, epochs=20001, sample_interval=200)
+    sswgan.train_classifier(train_x, train_y, epochs=101, sample_interval=-1)
 
     print("evaluate on test set")
     sswgan.classifier_model.evaluate(test_x, test_y, verbose=1)
