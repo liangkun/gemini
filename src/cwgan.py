@@ -118,12 +118,12 @@ class CWGAN():
 
         return model
 
-    def train(self, train_x, train_y, epochs, sample_interval=50):
+    def train(self, train_x, train_y, epochs, sample_interval=-1):
         # setup logs
         if self.log:
             tb_callback = TensorBoard(self.log)
             tb_callback.set_model(self.generator_model)
-        tb_names = ['d_loss', 'd_r_loss', 'd_f_loss', 'd_gp_loss', 'g_loss']
+        tb_names = ['d_loss', 'd_real_loss', 'd_fake_loss', 'd_gradient', 'g_loss']
 
         # adversarial ground truths
         real = -np.ones((self.batch_size, 1))
@@ -167,7 +167,7 @@ class CWGAN():
                 self.sample(epoch)
 
     def sample(self, epoch):
-        r, c = 10, 10
+        r, c = self.n_classes, 10
         fig, axs = plt.subplots(r, c)
 
         for i in range(r):
@@ -177,7 +177,7 @@ class CWGAN():
             for j in range(c):
                 axs[i,j].imshow(gen_imgs[j, :, :], cmap='gray')
                 axs[i,j].axis('off')
-        fig.savefig("images/mnist_%d.png" % epoch)
+        fig.savefig("images/cwgan_mnist_%d.png" % epoch)
         plt.close()
     
     def save(self, path):

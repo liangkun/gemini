@@ -106,7 +106,7 @@ class SSWGAN():
 
     def build_discriminator(self):
         encoded = keras.Input(shape=(self.latent_dim,))
-        hidden = keras.layers.Dense(48)(encoded)
+        hidden = keras.layers.Dense(16)(encoded)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         #hidden = keras.layers.Dense(48)(hidden)
         #hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
@@ -118,7 +118,7 @@ class SSWGAN():
 
     def build_classifier(self):
         encoded = keras.Input(shape=(self.latent_dim,))
-        hidden = keras.layers.Dense(48)(encoded)
+        hidden = keras.layers.Dense(16)(encoded)
         hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
         #hidden = keras.layers.Dense(48)(hidden)
         #hidden = keras.layers.LeakyReLU(alpha=0.2)(hidden)
@@ -132,13 +132,13 @@ class SSWGAN():
         self.train_autoencoder(train_x, train_y, epochs, sample_interval)
         self.train_classifier(train_x, train_y, epochs, sample_interval)
     
-    def train_autoencoder(self, train_x, train_y, epochs, sample_interval):
+    def train_autoencoder(self, train_x, train_y, epochs, sample_interval=-1):
         # setup logs
         if self.log:
             tb_callback = TensorBoard(self.log)
             tb_callback.set_model(self.adversarial_autoencoder)
-        tb_names = ['d_loss', 'd_r_loss', 'd_f_loss', 'd_gp_loss',
-                    'g_loss', 'g_mse', 'g_d_loss']
+        tb_names = ['d_loss', 'd_real_loss', 'd_fake_loss', 'd_gradient',
+                    'g_loss', 'g_mse', 'g_real_loss']
 
         # adversarial ground truths
         real = np.ones((self.batch_size, 1))
@@ -181,7 +181,7 @@ class SSWGAN():
             if sample_interval > 0 and epoch % sample_interval == 0:
                 self.sample(epoch)
 
-    def train_classifier(self, train_x, train_y, epochs, sample_interval):
+    def train_classifier(self, train_x, train_y, epochs, sample_interval=-1):
         callbacks = []
         if self.log:
             callbacks.append(TensorBoard(log_dir=self.log))
@@ -201,7 +201,7 @@ class SSWGAN():
             for j in range(c):
                 axs[i,j].imshow(gen_imgs[j, :, :], cmap='gray')
                 axs[i,j].axis('off')
-        fig.savefig("images/mnist_%d.png" % epoch)
+        fig.savefig("images/sswgan_mnist_%d.png" % epoch)
         plt.close()
 
     def save(self, path):
@@ -209,7 +209,7 @@ class SSWGAN():
         self.encoder.save(path + '/sswgan_encoder.h5')
     
     def load(self, path):
-        self.classifier_model = keras.models.load_model(path + '//sswgan_classifier.h5')
+        self.classifier_model = keras.models.load_model(path + '/sswgan_classifier.h5')
         self.encoder = keras.models.load_model(path + '/sswgan_encoder.h5')
 
 

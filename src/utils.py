@@ -9,6 +9,7 @@ from tensorflow.keras.callbacks import TensorBoard
 
 def write_log(model, callback, names, logs, batch_no, target='stdout'):
     if target == 'tensorboard':
+        names = [model + '_' + n for n in names]
         for name, value in zip(names, logs):
             summary = tf.Summary()
             summary_value = summary.value.add()
