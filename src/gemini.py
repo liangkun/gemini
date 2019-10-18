@@ -142,6 +142,15 @@ def load_token_data(path, bw_ratio=None):
     train_white_x, train_white_y = load_token_sample(path + '/train_white.csv')
     train_white_y[:] = 0
 
+    if bw_ratio:
+        n_white = int(train_black_x.shape[0] / bw_ratio)
+        replace = n_white > train_white_x.shape[0]
+        train_white_x = train_white_x.sample(n_white, replace=replace)
+        if replace:
+            train_white_y = train_white_y.append([0] * (n_white - train_white_x.shape[0]))
+        else:
+            train_white_y = train_white_y[:n_white]
+
     train_x = pd.concat([train_black_x, train_white_x], ignore_index=True)
     train_y = pd.concat([train_black_y, train_white_y], ignore_index=True)
 
@@ -155,8 +164,11 @@ def load_token_data(path, bw_ratio=None):
     test_x = pd.concat([test_black_x, test_white_x], ignore_index=True)
     test_y = pd.concat([test_black_y, test_white_y], ignore_index=True)
 
+    print('train set: black = %d, white = %d' % (train_black_x.shape[0], train_white_x.shape[0]))
+    print('test set: black = %d, white = %d' % (test_black_x.shape[0], test_white_x.shape[0]))
+
     train_x[train_x < 0] = 0
-    test_x[stest_x < 0] = 0
+    test_x[test_x < 0] = 0
     return train_x.values, train_y.values, test_x.values, test_y.values
 
 def evaluate(model, test_x, test_y, plt, colors):
@@ -175,26 +187,27 @@ def evaluate(model, test_x, test_y, plt, colors):
     plt.plot(sswgan_fpr, sswgan_tpr, colors[1], label='SSWGAN: %s' % model.name)
 
 if __name__ == '__main__':
-    # token input path '~/workspace/token_sample_201909'
-    train_x, train_y, test_x, test_y = load_mnist_data()
+    import sys
+    import os
 
-    gemini_raw = Gemini(input_dim=784, name='gemini_raw', modeldir='./raw_model',
+    #train_x, train_y, test_x, test_y = load_token_data('~/workspace/token_sample_201909', bw_ratio=1.0)
+    #gemini_raw = Gemini(input_dim=233, name='gemini_raw', modeldir='./raw_model',
+    #                clf_epochs=100, aae_batches=20001, generator_retrain=True, generator_batches=20001)
+    #gemini_raw.train(train_x, train_y)
+    #gemini_raw.save()
+
+    train_x, train_y, test_x, test_y = load_token_data('~/workspace/token_sample_201909', bw_ratio=0.25)
+    n_gen_sample = int(train_x.shape[0] / (1 + bw_ratio) * (1 - bw_ratio))
+    gemini = Gemini(input_dim=233, n_gen_samples=n_gen_sample, modeldir='./model',
                     clf_epochs=50, aae_batches=20001, generator_retrain=True, generator_batches=20001)
-
-    gemini = Gemini(input_dim=784, n_gen_samples=10000, modeldir='./model',
-                    clf_epochs=50, aae_batches=20001, generator_retrain=True, generator_batches=20001)
-
-    gemini_raw.train(train_x, train_y)
-    gemini_raw.save()
-
     gemini.train(train_x, train_y)
     gemini.save()
 
     # evaluate models
     plt.figure(1)
     plt.plot([0, 1], [0, 1], 'k--')
-    evaluate(gemini_raw, test_x, test_y, plt, ['r', 'b'])
+    #evaluate(gemini_raw, test_x, test_y, plt, ['r', 'b'])
     evaluate(gemini, test_x, test_y, plt, ['y', 'g'])
     plt.legend()
-    plt.savefig("./roc_curve.png")
+    plt.savefig("./roc_curve_balanced_1.png")
     plt.close()
