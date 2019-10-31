@@ -7,6 +7,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow import keras
+from baseline import Baseline
 from cwgan import CWGAN
 from sswgan import SSWGAN
 from sklearn.metrics import roc_curve, auc
@@ -16,7 +17,7 @@ class Gemini():
     '''Fraud token detection using GANs'''
     def __init__(self, input_dim, name='gemini', n_gen_samples=-1, clf_epochs=100,
                  modeldir='./model', logdir='./log', aae_retrain=True, generator_retrain=False,
-                 aae_batches=64, generator_batches=64, bw_ratio=None):
+                 aae_batches=64, generator_batches=64):
         # init params
         self.input_dim = input_dim
         self.name = name
@@ -28,10 +29,9 @@ class Gemini():
         self.generator_retrain = generator_retrain
         self.aae_batches = aae_batches
         self.generator_batches = generator_batches
-        self.bw_ratio = bw_ratio
 
         # create models
-        self.baseline = self.build_baseline_classifier()
+        self.baseline = Baseline(self.input_dim)
         self.baseline_trained = False
 
         self.sswgan = SSWGAN(self.input_dim, batch_size=64, log=self.logdir)
@@ -41,17 +41,6 @@ class Gemini():
         self.cwgan_trained = False
 
         self.normalizer_trained = False
-
-    def build_baseline_classifier(self):
-        inputs = keras.Input(shape=(self.input_dim,))
-        hidden = keras.layers.Dense(96)(inputs)
-        hidden = keras.layers.LeakyReLU(0.2)(hidden)
-        hidden = keras.layers.Dense(48)(inputs)
-        hidden = keras.layers.LeakyReLU(0.2)(hidden)
-        predict = keras.layers.Dense(1, activation='sigmoid')(hidden)
-        model = keras.Model(inputs, predict, name='baseline')
-        model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
-        return model
 
     def normalizer_init(self, train_x):
         if self.normalizer_trained:
@@ -64,6 +53,7 @@ class Gemini():
         self.normalizer_trained = True
 
     def normalize(self, x):
+        assert self.normalizer_trained, "normalizer not initialized"
         x = (x - self.feature_min) / self.feature_interval
         x[x > 1.0] = 1.0
         x[x < 0.0] = 0.0
@@ -90,37 +80,37 @@ class Gemini():
             train_y = combined_train_y
         
         print('trainning baseline classifier')
-        self.baseline.fit(train_x, train_y, epochs=self.clf_epochs, validation_split=0.1)
+        self.baseline.train(train_x, train_y, epochs=self.clf_epochs)
+        self.baseline_trained = True
 
         print('training sswgan classifier')
-        self.sswgan.train_autoencoder(train_x, train_y, epochs=self.aae_batches, sample_interval=-1)
+        self.sswgan.train_autoencoder(train_x, train_y, epochs=self.aae_batches)
         self.sswgan.train_classifier(train_x, train_y, epochs=self.clf_epochs)
+        self.sswgan_trained = True
     
     def generator_init(self, train_x=None, train_y=None):
         if self.cwgan_trained:
             return
 
         if self.generator_retrain:
-            self.cwgan.train(train_x, train_y, epochs=self.generator_batches, sample_interval=-1)
+            self.cwgan.train(train_x, train_y, epochs=self.generator_batches)
             self.cwgan.save(self.modeldir)
         else:
             self.cwgan.load(self.modeldir)
         self.cwgan_trained = True
     
     def save(self):
-        self.baseline.save(self.modeldir + '/baseline.h5')
+        self.baseline.save(self.modeldir)
         self.sswgan.save(self.modeldir)
 
     def load(self):
         self.sswgan.load(self.modeldir)
-        self.baseline = keras.models.load_model(self.modeldir + '/baseline.h5')
+        self.baseline.load(self.modeldir)
 
 # -- aux functions: mnist data for tests, input_dim = 784
 def load_mnist_data(bw_ratio=None):
     (train_x, train_y), (test_x, test_y) = keras.datasets.mnist.load_data()
-    train_x = train_x.astype(np.float32) / 255
     train_y = (train_y == 0).astype(int)
-    test_x = test_x.astype(np.float32) / 255
     test_y = (test_y == 0).astype(int)
 
     input_dim = np.prod(train_x.shape[1:])
@@ -147,9 +137,12 @@ def load_token_data(path, bw_ratio=None):
         replace = n_white > train_white_x.shape[0]
         train_white_x = train_white_x.sample(n_white, replace=replace)
         if replace:
-            train_white_y = train_white_y.append([0] * (n_white - train_white_x.shape[0]))
+            # TODO: cannot append anything
+            train_white_y = train_white_y.append([0] * (n_white - train_white_x.shape[0]), ignore_index=True)
         else:
             train_white_y = train_white_y[:n_white]
+        print('n_white: %d, train_x: %d, train_y: %d' % (n_white, train_white_x.shape[0], train_white_y.shape[0]))
+        assert train_white_x.shape[0] == train_white_y.shape[0]
 
     train_x = pd.concat([train_black_x, train_white_x], ignore_index=True)
     train_y = pd.concat([train_black_y, train_white_y], ignore_index=True)
@@ -173,7 +166,7 @@ def load_token_data(path, bw_ratio=None):
 
 def evaluate(model, test_x, test_y, plt, colors):
     test_x = model.normalize(test_x.copy())
-    baseline_predict_y = model.baseline.predict(test_x)
+    baseline_predict_y = model.baseline.model.predict(test_x)
     baseline_fpr, baseline_tpr, _ = roc_curve(test_y, baseline_predict_y)
     print('evaluating %s baseline classifier on test set, auc: %4f' %
           (model.name, auc(baseline_fpr, baseline_tpr)))
@@ -190,15 +183,12 @@ if __name__ == '__main__':
     import sys
     import os
 
-    #train_x, train_y, test_x, test_y = load_token_data('~/workspace/token_sample_201909', bw_ratio=1.0)
-    #gemini_raw = Gemini(input_dim=233, name='gemini_raw', modeldir='./raw_model',
-    #                clf_epochs=100, aae_batches=20001, generator_retrain=True, generator_batches=20001)
-    #gemini_raw.train(train_x, train_y)
-    #gemini_raw.save()
-
-    train_x, train_y, test_x, test_y = load_token_data('~/workspace/token_sample_201909', bw_ratio=0.25)
-    n_gen_sample = int(train_x.shape[0] / (1 + bw_ratio) * (1 - bw_ratio))
-    gemini = Gemini(input_dim=233, n_gen_samples=n_gen_sample, modeldir='./model',
+    #bw_ratio = 0.35
+    bw_ratio = 1.0/9.0
+    #train_x, train_y, test_x, test_y = load_token_data('~/workspace/token_sample_201909', bw_ratio=bw_ratio)
+    train_x, train_y, test_x, test_y = load_mnist_data(bw_ratio)
+    n_gen_samples = int(train_x.shape[0] / (1 + bw_ratio) * (1 - bw_ratio))
+    gemini = Gemini(input_dim=784, n_gen_samples=n_gen_samples, modeldir='./model',
                     clf_epochs=50, aae_batches=20001, generator_retrain=True, generator_batches=20001)
     gemini.train(train_x, train_y)
     gemini.save()
@@ -206,8 +196,7 @@ if __name__ == '__main__':
     # evaluate models
     plt.figure(1)
     plt.plot([0, 1], [0, 1], 'k--')
-    #evaluate(gemini_raw, test_x, test_y, plt, ['r', 'b'])
     evaluate(gemini, test_x, test_y, plt, ['y', 'g'])
     plt.legend()
-    plt.savefig("./roc_curve_balanced_1.png")
+    plt.savefig("./roc_curve_minist_train_balanced.png")
     plt.close()
