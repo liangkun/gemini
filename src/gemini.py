@@ -84,7 +84,7 @@ class Gemini():
         self.baseline_trained = True
 
         print('training sswgan classifier')
-        self.sswgan.train_autoencoder(train_x, train_y, epochs=self.aae_batches)
+        self.sswgan.train_autoencoder(train_x, train_y, epochs=self.aae_batches, sample_interval=100)
         self.sswgan.train_classifier(train_x, train_y, epochs=self.clf_epochs)
         self.sswgan_trained = True
     
@@ -93,7 +93,7 @@ class Gemini():
             return
 
         if self.generator_retrain:
-            self.cwgan.train(train_x, train_y, epochs=self.generator_batches)
+            self.cwgan.train(train_x, train_y, epochs=self.generator_batches, sample_interval=100)
             self.cwgan.save(self.modeldir)
         else:
             self.cwgan.load(self.modeldir)
@@ -189,7 +189,7 @@ if __name__ == '__main__':
     train_x, train_y, test_x, test_y = load_mnist_data(bw_ratio)
     n_gen_samples = int(train_x.shape[0] / (1 + bw_ratio) * (1 - bw_ratio))
     gemini = Gemini(input_dim=784, n_gen_samples=n_gen_samples, modeldir='./model',
-                    clf_epochs=50, aae_batches=20001, generator_retrain=True, generator_batches=20001)
+                    clf_epochs=50, aae_batches=10001, generator_retrain=True, generator_batches=10001)
     gemini.train(train_x, train_y)
     gemini.save()
 
