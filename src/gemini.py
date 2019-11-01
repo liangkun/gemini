@@ -84,7 +84,7 @@ class Gemini():
         self.baseline_trained = True
 
         print('training sswgan classifier')
-        self.sswgan.train_autoencoder(train_x, train_y, epochs=self.aae_batches, sample_interval=100)
+        self.sswgan.train_autoencoder(train_x, train_y, epochs=self.aae_batches, sample_interval=-1)
         self.sswgan.train_classifier(train_x, train_y, epochs=self.clf_epochs)
         self.sswgan_trained = True
     
@@ -93,7 +93,7 @@ class Gemini():
             return
 
         if self.generator_retrain:
-            self.cwgan.train(train_x, train_y, epochs=self.generator_batches, sample_interval=100)
+            self.cwgan.train(train_x, train_y, epochs=self.generator_batches, sample_interval=-1)
             self.cwgan.save(self.modeldir)
         else:
             self.cwgan.load(self.modeldir)
@@ -183,13 +183,13 @@ if __name__ == '__main__':
     import sys
     import os
 
-    #bw_ratio = 0.35
-    bw_ratio = 1.0/9.0
-    #train_x, train_y, test_x, test_y = load_token_data('~/workspace/token_sample_201909', bw_ratio=bw_ratio)
-    train_x, train_y, test_x, test_y = load_mnist_data(bw_ratio)
+    bw_ratio = 0.35
+    #bw_ratio = 1.0/9.0
+    train_x, train_y, test_x, test_y = load_token_data('~/workspace/token_sample_201909', bw_ratio=bw_ratio)
+    #train_x, train_y, test_x, test_y = load_mnist_data(bw_ratio)
     n_gen_samples = int(train_x.shape[0] / (1 + bw_ratio) * (1 - bw_ratio))
-    gemini = Gemini(input_dim=784, n_gen_samples=n_gen_samples, modeldir='./model',
-                    clf_epochs=50, aae_batches=10001, generator_retrain=True, generator_batches=10001)
+    gemini = Gemini(input_dim=233, n_gen_samples=n_gen_samples, modeldir='./model',
+                    clf_epochs=50, aae_batches=20001, generator_retrain=True, generator_batches=20001)
     gemini.train(train_x, train_y)
     gemini.save()
 
@@ -198,5 +198,5 @@ if __name__ == '__main__':
     plt.plot([0, 1], [0, 1], 'k--')
     evaluate(gemini, test_x, test_y, plt, ['y', 'g'])
     plt.legend()
-    plt.savefig("./roc_curve_minist_train_balanced.png")
+    plt.savefig("./roc_curve_token_balanced.png")
     plt.close()
